@@ -1,0 +1,23 @@
+# Video media files
+*.MTS
+*.mts
+*.MP4
+*.mp4
+videos/
+output/
+*.avi
+*.mov
+
+# Render outputs
+finalTEMP_MPY_wvf_snd.mp4
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

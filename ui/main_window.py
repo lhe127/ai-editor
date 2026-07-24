@@ -1,0 +1,300 @@
+"""
+Main PySide6 Application Window.
+Integrates the complete multi-camera video editing pipeline:
+Import -> Synchronize -> Generate EDL -> Human Review -> Render Final MP4.
+"""
+import os
+import sys
+import logging
+from pathlib import Path
+from PySide6.QtWidgets import (
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
+    QLabel, QFileDialog, QTableWidget, QTableWidgetItem, QHeaderView,
+    QProgressBar, QTextEdit, QMessageBox, QGroupBox
+)
+from PySide6.QtCore import Qt, QThread, Signal
+
+import config
+from synchronization.audio_sync import AudioSynchronizer
+from synchronization.timeline import MasterTimeline
+from selection.motion import MotionAnalyzer
+from selection.camera_selector import CameraSelector
+from edl.edl_manager import EDLManager
+from renderer.moviepy_renderer import MoviePyRenderer
+from ui.timeline_widget import TimelineWidget
+from ui.review_window import EDLReviewDialog
+
+logger = logging.getLogger(__name__)
+
+# Worker Threads for non-blocking UI
+class SyncWorker(QThread):
+    finished_signal = Signal(dict)
+    error_signal = Signal(str)
+
+    def __init__(self, camera_files: dict):
+        super().__init__()
+        self.camera_files = camera_files
+
+    def run(self):
+        try:
+            synchronizer = AudioSynchronizer()
+            results = synchronizer.synchronize_cameras(self.camera_files)
+            self.finished_signal.emit(results)
+        except Exception as e:
+            self.error_signal.emit(str(e))
+
+class RenderWorker(QThread):
+    progress_signal = Signal(int)
+    finished_signal = Signal(bool, str)
+
+    def __init__(self, edl_segments: list, timeline: MasterTimeline, output_path: str):
+        super().__init__()
+        self.edl_segments = edl_segments
+        self.timeline = timeline
+        self.output_path = output_path
+
+    def run(self):
+        try:
+            renderer = MoviePyRenderer()
+            success = renderer.render_edl(
+                edl_segments=self.edl_segments,
+                timeline=self.timeline,
+                output_path=self.output_path,
+                progress_callback=self.progress_signal.emit
+            )
+            self.finished_signal.emit(success, self.output_path)
+        except Exception as e:
+            self.finished_signal.emit(False, str(e))
+
+
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("BTIS3053 - AI-Assisted Multi-Camera Graduation Video Editor (Semi-Automated)")
+        self.resize(1100, 780)
+
+        # Pipeline state
+        self.camera_files = {}
+        self.timeline = MasterTimeline()
+        self.edl_segments = []
+        self.sync_results = {}
+
+        self._setup_ui()
+        self._auto_detect_videos()
+
+    def _setup_ui(self):
+        main_widget = QWidget()
+        self.setCentralWidget(main_widget)
+        main_layout = QVBoxLayout(main_widget)
+
+        # 1. Ethics & Compliance Header Banner
+        ethics_box = QGroupBox("University Assignment & Ethics Compliance")
+        ethics_layout = QVBoxLayout(ethics_box)
+        ethics_label = QLabel(config.ETHICS_DISCLAIMER)
+        ethics_label.setStyleSheet("color: #38bdf8; font-weight: bold;")
+        ethics_layout.addWidget(ethics_label)
+        main_layout.addWidget(ethics_box)
+
+        # 2. Workflow Buttons Toolbar
+        toolbar_layout = QHBoxLayout()
+
+        self.btn_import = QPushButton("1. 📁 Import Videos")
+        self.btn_import.clicked.connect(self._on_import_videos)
+        toolbar_layout.addWidget(self.btn_import)
+
+        self.btn_sync = QPushButton("2. ⏱️ Audio Synchronize")
+        self.btn_sync.clicked.connect(self._on_synchronize)
+        toolbar_layout.addWidget(self.btn_sync)
+
+        self.btn_gen_edl = QPushButton("3. 🤖 Generate AI EDL")
+        self.btn_gen_edl.clicked.connect(self._on_generate_edl)
+        toolbar_layout.addWidget(self.btn_gen_edl)
+
+        self.btn_review = QPushButton("4. ✏️ Human Review EDL")
+        self.btn_review.clicked.connect(self._on_human_review)
+        toolbar_layout.addWidget(self.btn_review)
+
+        self.btn_render = QPushButton("5. 🎬 Render Final MP4")
+        self.btn_render.setStyleSheet("background-color: #059669; font-weight: bold; color: white;")
+        self.btn_render.clicked.connect(self._on_render_video)
+        toolbar_layout.addWidget(self.btn_render)
+
+        main_layout.addLayout(toolbar_layout)
+
+        # 3. Video Import Status Table
+        self.cam_table = QTableWidget()
+        self.cam_table.setColumnCount(5)
+        self.cam_table.setHorizontalHeaderLabels(["Camera ID", "File Path", "Sync Offset (ms)", "Duration (s)", "Status"])
+        self.cam_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.cam_table.setFixedHeight(140)
+        main_layout.addWidget(self.cam_table)
+
+        # 4. Master Timeline Visualizer
+        self.timeline_widget = TimelineWidget()
+        main_layout.addWidget(self.timeline_widget)
+
+        # 5. Progress Bar & Log Output Console
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setValue(0)
+        main_layout.addWidget(self.progress_bar)
+
+        self.log_console = QTextEdit()
+        self.log_console.setReadOnly(True)
+        self.log_console.setStyleSheet("background-color: #0f172a; color: #a7f3d0; font-family: Consolas, monospace;")
+        self.log_console.setFixedHeight(150)
+        main_layout.addWidget(self.log_console)
+
+        self.log_info("System Initialized. Ready to import camera feeds.")
+
+    def log_info(self, message: str):
+        """Append log message to UI log console."""
+        self.log_console.append(f"> {message}")
+        logger.info(message)
+
+    def _auto_detect_videos(self):
+        """Auto-detect default sample videos in videos/ directory if present."""
+        auto_found = {}
+        for cam_id in config.CAMERA_KEYS:
+            for ext in [".mp4", ".mts", ".m2ts", ".mov"]:
+                target = config.VIDEOS_DIR / f"{cam_id.lower()}{ext}"
+                if target.exists():
+                    auto_found[cam_id] = str(target)
+                    break
+
+        if auto_found:
+            self.camera_files = auto_found
+            self.log_info(f"Auto-detected {len(auto_found)} camera feeds in {config.VIDEOS_DIR}")
+            self._update_cam_table()
+
+    def _on_import_videos(self):
+        files, _ = QFileDialog.getOpenFileNames(
+            self,
+            "Select Camera Videos (MP4 / MOV / MTS)",
+            str(config.VIDEOS_DIR),
+            "Video Files (*.mp4 *.mov *.mts *.m2ts);;MTS Files (*.mts *.m2ts);;All Files (*)"
+        )
+        if files:
+            self.camera_files = {}
+            for idx, filepath in enumerate(files[:4]):
+                cam_id = config.CAMERA_KEYS[idx]
+                self.camera_files[cam_id] = filepath
+
+            self.log_info(f"Imported {len(self.camera_files)} camera video feeds.")
+            self._update_cam_table()
+
+    def _update_cam_table(self):
+        self.cam_table.setRowCount(0)
+        for cam_id in config.CAMERA_KEYS:
+            row = self.cam_table.rowCount()
+            self.cam_table.insertRow(row)
+
+            filepath = self.camera_files.get(cam_id, "Not Selected")
+            offset_ms = self.sync_results.get(cam_id, {}).get("offset_ms", 0)
+            dur = self.sync_results.get(cam_id, {}).get("duration", 0.0)
+            status = self.sync_results.get(cam_id, {}).get("status", "Imported" if cam_id in self.camera_files else "Missing")
+
+            self.cam_table.setItem(row, 0, QTableWidgetItem(cam_id))
+            self.cam_table.setItem(row, 1, QTableWidgetItem(os.path.basename(filepath)))
+            self.cam_table.setItem(row, 2, QTableWidgetItem(f"{offset_ms:+} ms"))
+            self.cam_table.setItem(row, 3, QTableWidgetItem(f"{dur:.1f} s"))
+            self.cam_table.setItem(row, 4, QTableWidgetItem(status))
+
+    def _on_synchronize(self):
+        if not self.camera_files:
+            QMessageBox.warning(self, "No Videos", "Please import camera videos first or run test generator script.")
+            return
+
+        self.log_info("Starting audio cross-correlation synchronization...")
+        self.progress_bar.setValue(20)
+
+        self.sync_thread = SyncWorker(self.camera_files)
+        self.sync_thread.finished_signal.connect(self._on_sync_finished)
+        self.sync_thread.error_signal.connect(lambda err: self.log_info(f"Sync Error: {err}"))
+        self.sync_thread.start()
+
+    def _on_sync_finished(self, results: dict):
+        self.sync_results = results
+        self.timeline = MasterTimeline()
+
+        for cam_id, info in results.items():
+            if os.path.exists(info["file"]):
+                self.timeline.add_track(
+                    camera_id=cam_id,
+                    file_path=info["file"],
+                    offset_sec=info["offset_sec"],
+                    duration=info["duration"]
+                )
+
+        self.progress_bar.setValue(100)
+        self._update_cam_table()
+        self.timeline_widget.set_data(results, self.edl_segments, self.timeline.total_duration)
+        self.log_info("Audio Synchronization Complete. Master timeline generated.")
+
+    def _on_generate_edl(self):
+        if not self.timeline.tracks:
+            QMessageBox.warning(self, "Timeline Empty", "Please run Audio Synchronization step first.")
+            return
+
+        try:
+            self.log_info("Running motion estimation and AI camera selection rules...")
+
+            motion_analyzer = MotionAnalyzer()
+            motion_map = motion_analyzer.get_multi_camera_motion_map(
+                {k: v["file"] for k, v in self.sync_results.items() if "file" in v},
+                self.timeline.total_duration
+            )
+
+            selector = CameraSelector()
+            self.edl_segments = selector.generate_edl(self.timeline, motion_map)
+
+            edl_path = str(config.EDL_DIR / "output.json")
+            EDLManager.save_edl(self.edl_segments, edl_path)
+
+            self.timeline_widget.set_data(self.sync_results, self.edl_segments, self.timeline.total_duration)
+            self.log_info(f"Generated {len(self.edl_segments)} EDL cut segments. Saved to {edl_path}")
+
+        except Exception as e:
+            self.log_info(f"EDL Generation Error: {e}")
+            logger.error(f"Error during EDL generation: {e}", exc_info=True)
+            QMessageBox.critical(self, "EDL Generation Error", f"An error occurred during EDL generation:\n{e}")
+
+    def _on_human_review(self):
+        if not self.edl_segments:
+            QMessageBox.warning(self, "No EDL", "Please click 'Generate AI EDL' first.")
+            return
+
+        dialog = EDLReviewDialog(self.edl_segments, self)
+        if dialog.exec():
+            self.edl_segments = dialog.edl_segments
+            edl_path = str(config.EDL_DIR / "output.json")
+            EDLManager.save_edl(self.edl_segments, edl_path)
+            self.timeline_widget.set_data(self.sync_results, self.edl_segments, self.timeline.total_duration)
+            self.log_info("EDL successfully updated and approved by Human Reviewer.")
+
+    def _on_render_video(self):
+        if not self.edl_segments:
+            QMessageBox.warning(self, "No EDL", "Please generate and review EDL before rendering.")
+            return
+
+        valid, msg = EDLManager.validate_edl(self.edl_segments)
+        if not valid:
+            QMessageBox.warning(self, "EDL Validation Failed", msg)
+            return
+
+        out_path = str(config.OUTPUT_DIR / "final.mp4")
+        self.log_info(f"Launching MoviePy render pipeline -> {out_path}...")
+        self.progress_bar.setValue(5)
+
+        self.render_thread = RenderWorker(self.edl_segments, self.timeline, out_path)
+        self.render_thread.progress_signal.connect(self.progress_bar.setValue)
+        self.render_thread.finished_signal.connect(self._on_render_finished)
+        self.render_thread.start()
+
+    def _on_render_finished(self, success: bool, path_or_err: str):
+        if success:
+            self.progress_bar.setValue(100)
+            self.log_info(f"SUCCESS: Rendered final video to {path_or_err}")
+            QMessageBox.information(self, "Render Complete", f"Final MP4 video exported to:\n{path_or_err}")
+        else:
+            self.log_info(f"Render Error: {path_or_err}")
+            QMessageBox.critical(self, "Render Failed", f"Error during rendering:\n{path_or_err}")
