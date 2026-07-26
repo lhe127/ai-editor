@@ -36,7 +36,30 @@ def helper_with_duration(clip, duration: float):
     """Cross-version MoviePy duration compatibility."""
     if hasattr(clip, "with_duration"):
         return clip.with_duration(duration)
-    return clip.set_duration(duration)
+    elif hasattr(clip, "set_duration"):
+        return clip.set_duration(duration)
+    return clip
+
+def helper_with_start(clip, start_time: float):
+    """Cross-version MoviePy start time compatibility."""
+    if hasattr(clip, "with_start"):
+        return clip.with_start(start_time)
+    elif hasattr(clip, "set_start"):
+        return clip.set_start(start_time)
+    return clip
+
+def helper_crossfadein(clip, duration: float):
+    """Cross-version MoviePy crossfadein compatibility."""
+    try:
+        if hasattr(vfx, "crossfadein"):
+            return vfx.crossfadein(clip, duration)
+        elif hasattr(clip, "crossfadein"):
+            return clip.crossfadein(duration)
+        elif hasattr(vfx, "fadein"):
+            return vfx.fadein(clip, duration)
+    except Exception:
+        pass
+    return clip
 
 class MoviePyRenderer:
     def __init__(self, output_resolution: tuple[int, int] = config.DEFAULT_RESOLUTION, fps: int = config.DEFAULT_FPS):
@@ -54,14 +77,14 @@ class MoviePyRenderer:
         progress_callback=None
     ) -> bool:
         """
-        Render final video from EDL and MasterTimeline.
+        Render final video from EDL and MasterTimeline using smooth cross-dissolve transitions.
         """
         if not edl_segments:
             logger.error("Empty EDL segments list. Cannot render.")
             return False
 
         logger.info(f"Beginning MoviePy video rendering pipeline to {output_path}...")
-        processed_clips = []
+        processed_items = []
         open_video_clips = []
 
         try:
@@ -69,7 +92,10 @@ class MoviePyRenderer:
             if include_title:
                 logger.info("Generating Opening Title Card...")
                 title_clip = self.subtitle_gen.create_title_card()
-                processed_clips.append(title_clip)
+                processed_items.append({
+                    "clip": title_clip,
+                    "transition": "fade"
+                })
 
             # 2. Process each EDL segment
             total_segments = len(edl_segments)
@@ -80,7 +106,7 @@ class MoviePyRenderer:
                 cam_id = seg["camera"]
                 start_sec = seg["start_sec"]
                 end_sec = seg["end_sec"]
-                transition = seg.get("transition", "cut")
+                transition = seg.get("transition", "crossfade")
                 reason = seg.get("reason", "Camera selection")
 
                 if cam_id not in timeline.tracks:
@@ -110,15 +136,7 @@ class MoviePyRenderer:
                     elif hasattr(sub_clip, "resize"):
                         sub_clip = sub_clip.resize(self.resolution)
 
-                # Apply Fade transition if specified
                 segment_duration = sub_clip.duration
-                if transition == "fade" and segment_duration > 1.0:
-                    try:
-                        if hasattr(vfx, "fadein"):
-                            sub_clip = vfx.fadein(sub_clip, 0.5)
-                            sub_clip = vfx.fadeout(sub_clip, 0.5)
-                    except Exception as fe:
-                        logger.warning(f"Failed to apply fade transition: {fe}")
 
                 # Attach Lower-Third overlay
                 cam_label = config.CAMERA_LABELS.get(cam_id, cam_id)
@@ -130,21 +148,48 @@ class MoviePyRenderer:
 
                 composite_seg = CompositeVideoClip([sub_clip, lower_third])
                 composite_seg = helper_with_duration(composite_seg, segment_duration)
-                processed_clips.append(composite_seg)
+                processed_items.append({
+                    "clip": composite_seg,
+                    "transition": transition
+                })
 
             # 3. Add Closing Outro Credits Card
             if include_outro:
                 logger.info("Generating Closing Outro Credits Card...")
                 credits_clip = self.subtitle_gen.create_credits_card()
-                processed_clips.append(credits_clip)
+                processed_items.append({
+                    "clip": credits_clip,
+                    "transition": "crossfade"
+                })
 
-            if not processed_clips:
+            if not processed_items:
                 logger.error("No valid video clips created.")
                 return False
 
-            # 4. Concatenate all processed clips into final timeline
-            logger.info("Concatenating master timeline clips...")
-            final_clip = concatenate_videoclips(processed_clips, method="compose")
+            # 4. Composite clips sequentially with seamless cross-dissolve transitions
+            logger.info("Compositing master timeline clips with seamless cross-dissolve transitions...")
+            positioned_clips = []
+            current_t = 0.0
+
+            for idx, item in enumerate(processed_items):
+                clip = item["clip"]
+                trans = item.get("transition", "crossfade")
+                dur = float(clip.duration) if clip.duration is not None else 5.0
+
+                fade_dur = 0.8 if trans == "crossfade" else (0.4 if trans == "fade" else 0.0)
+
+                if idx > 0 and fade_dur > 0 and dur > (fade_dur * 2):
+                    start_t = max(0.0, current_t - fade_dur)
+                    clip = helper_crossfadein(clip, fade_dur)
+                else:
+                    start_t = current_t
+
+                clip = helper_with_start(clip, start_t)
+                positioned_clips.append(clip)
+                current_t = start_t + dur
+
+            final_clip = CompositeVideoClip(positioned_clips, size=self.resolution)
+            final_clip = helper_with_duration(final_clip, current_t)
 
             # 5. Export MP4 file
             os.makedirs(os.path.dirname(output_path), exist_ok=True)

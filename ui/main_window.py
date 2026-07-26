@@ -10,7 +10,7 @@ from pathlib import Path
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QLabel, QFileDialog, QTableWidget, QTableWidgetItem, QHeaderView,
-    QProgressBar, QTextEdit, QMessageBox, QGroupBox
+    QProgressBar, QTextEdit, QMessageBox, QGroupBox, QSpinBox, QScrollArea
 )
 from PySide6.QtCore import Qt, QThread, Signal
 
@@ -71,7 +71,8 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("BTIS3053 - AI-Assisted Multi-Camera Graduation Video Editor (Semi-Automated)")
-        self.resize(1100, 780)
+        self.setMinimumSize(960, 680)
+        self.resize(1150, 850)
 
         # Pipeline state
         self.camera_files = {}
@@ -83,19 +84,48 @@ class MainWindow(QMainWindow):
         self._auto_detect_videos()
 
     def _setup_ui(self):
-        main_widget = QWidget()
-        self.setCentralWidget(main_widget)
-        main_layout = QVBoxLayout(main_widget)
+        # Main Scroll Area Wrapper to prevent elements from being hidden on smaller screens
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setStyleSheet("QScrollArea { border: none; background-color: #0f172a; }")
+        self.setCentralWidget(scroll_area)
+
+        content_widget = QWidget()
+        scroll_area.setWidget(content_widget)
+
+        main_layout = QVBoxLayout(content_widget)
+        main_layout.setContentsMargins(12, 12, 12, 12)
+        main_layout.setSpacing(10)
 
         # 1. Ethics & Compliance Header Banner
         ethics_box = QGroupBox("University Assignment & Ethics Compliance")
         ethics_layout = QVBoxLayout(ethics_box)
         ethics_label = QLabel(config.ETHICS_DISCLAIMER)
-        ethics_label.setStyleSheet("color: #38bdf8; font-weight: bold;")
+        ethics_label.setStyleSheet("color: #38bdf8; font-weight: bold; font-size: 12px;")
         ethics_layout.addWidget(ethics_label)
         main_layout.addWidget(ethics_box)
 
-        # 2. Workflow Buttons Toolbar
+        # 2. Controls & Target Duration Toolbar Group
+        control_box = QGroupBox("Video Pipeline Controls & Settings")
+        control_box_layout = QVBoxLayout(control_box)
+
+        top_controls = QHBoxLayout()
+        target_dur_label = QLabel("⏱️ Target Output Duration (sec):")
+        target_dur_label.setStyleSheet("font-weight: bold; color: #f59e0b; font-size: 13px;")
+        top_controls.addWidget(target_dur_label)
+
+        self.spin_target_duration = QSpinBox()
+        self.spin_target_duration.setRange(15, 600)
+        self.spin_target_duration.setValue(int(config.DEFAULT_TARGET_DURATION))
+        self.spin_target_duration.setSingleStep(5)
+        self.spin_target_duration.setToolTip("Set maximum output video length in seconds (Assignment default: 60-180s)")
+        self.spin_target_duration.setStyleSheet("font-size: 13px; font-weight: bold; padding: 3px 8px;")
+        top_controls.addWidget(self.spin_target_duration)
+
+        top_controls.addStretch()
+        control_box_layout.addLayout(top_controls)
+
+        # Workflow Buttons Toolbar
         toolbar_layout = QHBoxLayout()
 
         self.btn_import = QPushButton("1. 📁 Import Videos")
@@ -119,18 +149,20 @@ class MainWindow(QMainWindow):
         self.btn_render.clicked.connect(self._on_render_video)
         toolbar_layout.addWidget(self.btn_render)
 
-        main_layout.addLayout(toolbar_layout)
+        control_box_layout.addLayout(toolbar_layout)
+        main_layout.addWidget(control_box)
 
         # 3. Video Import Status Table
         self.cam_table = QTableWidget()
         self.cam_table.setColumnCount(5)
         self.cam_table.setHorizontalHeaderLabels(["Camera ID", "File Path", "Sync Offset (ms)", "Duration (s)", "Status"])
         self.cam_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.cam_table.setFixedHeight(140)
+        self.cam_table.setFixedHeight(120)
         main_layout.addWidget(self.cam_table)
 
         # 4. Master Timeline Visualizer
         self.timeline_widget = TimelineWidget()
+        self.timeline_widget.setMinimumHeight(220)
         main_layout.addWidget(self.timeline_widget)
 
         # 5. Progress Bar & Log Output Console
@@ -141,7 +173,7 @@ class MainWindow(QMainWindow):
         self.log_console = QTextEdit()
         self.log_console.setReadOnly(True)
         self.log_console.setStyleSheet("background-color: #0f172a; color: #a7f3d0; font-family: Consolas, monospace;")
-        self.log_console.setFixedHeight(150)
+        self.log_console.setFixedHeight(120)
         main_layout.addWidget(self.log_console)
 
         self.log_info("System Initialized. Ready to import camera feeds.")
@@ -236,7 +268,8 @@ class MainWindow(QMainWindow):
             return
 
         try:
-            self.log_info("Running motion estimation and AI camera selection rules...")
+            target_dur = float(self.spin_target_duration.value())
+            self.log_info(f"Running motion estimation & camera selection rules (Target Duration: {target_dur:.1f}s)...")
 
             motion_analyzer = MotionAnalyzer()
             motion_map = motion_analyzer.get_multi_camera_motion_map(
@@ -245,13 +278,18 @@ class MainWindow(QMainWindow):
             )
 
             selector = CameraSelector()
-            self.edl_segments = selector.generate_edl(self.timeline, motion_map)
+            self.edl_segments = selector.generate_edl(
+                self.timeline,
+                motion_map,
+                target_duration=target_dur
+            )
 
             edl_path = str(config.EDL_DIR / "output.json")
             EDLManager.save_edl(self.edl_segments, edl_path)
 
-            self.timeline_widget.set_data(self.sync_results, self.edl_segments, self.timeline.total_duration)
-            self.log_info(f"Generated {len(self.edl_segments)} EDL cut segments. Saved to {edl_path}")
+            effective_dur = min(self.timeline.total_duration, target_dur) if self.timeline.total_duration > 0 else target_dur
+            self.timeline_widget.set_data(self.sync_results, self.edl_segments, effective_dur)
+            self.log_info(f"Generated {len(self.edl_segments)} smooth EDL cut segments up to {effective_dur:.1f}s. Saved to {edl_path}")
 
         except Exception as e:
             self.log_info(f"EDL Generation Error: {e}")

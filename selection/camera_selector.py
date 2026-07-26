@@ -25,21 +25,30 @@ class CameraSelector:
         self,
         timeline: MasterTimeline,
         motion_map: Dict[str, List[float]],
+        target_duration: float = None,
         step_sec: float = 0.5
     ) -> List[Dict[str, Any]]:
         """
-        Generate raw EDL segments over the total duration of the master timeline.
+        Generate raw EDL segments over the requested target duration (or total duration of master timeline).
         Guaranteeing:
         - at least 2 camera angles used
         - at least 3 camera switches
+        - smooth transitions between shots
         """
-        total_duration = timeline.total_duration
-        if total_duration <= 0:
+        raw_total = timeline.total_duration
+        if raw_total <= 0:
             logger.warning("Timeline total duration is 0. Returning empty EDL.")
             return []
 
+        # Determine effective total duration based on target time input
+        if target_duration is not None and target_duration > 0:
+            total_duration = min(raw_total, target_duration)
+        else:
+            total_duration = raw_total
+
         raw_decisions = []
         current_cam = "Camera1"
+        previous_cam = None
         current_shot_start = 0.0
         current_reason = "Opening stage shot"
 
@@ -57,6 +66,7 @@ class CameraSelector:
                 motion_map=motion_map,
                 current_cam=current_cam,
                 current_shot_length=shot_len,
+                previous_cam=previous_cam,
                 sample_interval=step_sec
             )
 
@@ -68,11 +78,12 @@ class CameraSelector:
                     "camera": current_cam,
                     "reason": current_reason
                 })
+                previous_cam = current_cam
                 current_cam = chosen_cam
                 current_shot_start = t
                 current_reason = reason
 
-        # Close final segment
+        # Close final segment up to total_duration limit
         if current_shot_start < total_duration:
             raw_decisions.append({
                 "start_sec": current_shot_start,
@@ -84,11 +95,17 @@ class CameraSelector:
         # Ensure assignment minimum requirements: >= 2 camera angles, >= 3 camera switches
         raw_decisions = self._enforce_assignment_constraints(raw_decisions, total_duration)
 
-        # Format final EDL list
+        # Format final EDL list with smooth transition assignments
         edl_segments = []
         for idx, seg in enumerate(raw_decisions):
-            # Alternate transitions between cuts and fades for assignment requirement
-            transition = "fade" if idx % 2 == 1 else "cut"
+            # First segment uses crossfade or fade; alternate crossfade/fade for smooth scene flow
+            if idx == 0:
+                transition = "fade"
+            elif idx % 2 == 1:
+                transition = "crossfade"
+            else:
+                transition = "fade"
+
             edl_segments.append({
                 "segment_id": idx + 1,
                 "start": seconds_to_tc(seg["start_sec"]),

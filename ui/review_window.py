@@ -25,9 +25,11 @@ class EDLReviewDialog(QDialog):
         layout = QVBoxLayout(self)
 
         # Header Info Banner
+        total_dur = sum(seg.get("end_sec", 0.0) - seg.get("start_sec", 0.0) for seg in self.edl_segments) if self.edl_segments else 0.0
         header = QLabel(
             "★ SEMI-AUTOMATED HUMAN REVIEW STEP ★\n"
-            "Review and customize camera angles, timestamps, transitions, and AI reasons before video rendering."
+            f"Review & edit camera angles, timecodes, transitions (crossfade/fade/cut), and AI reasons.\n"
+            f"Total Output EDL Duration: {total_dur:.1f}s"
         )
         header.setStyleSheet("font-weight: bold; color: #f59e0b; background-color: #1e293b; padding: 10px; border-radius: 5px;")
         layout.addWidget(header)
@@ -90,8 +92,8 @@ class EDLReviewDialog(QDialog):
 
             # Transition ComboBox
             trans_combo = QComboBox()
-            trans_combo.addItems(["cut", "fade"])
-            trans_combo.setCurrentText(seg.get("transition", "cut"))
+            trans_combo.addItems(getattr(config, "TRANSITION_TYPES", ["crossfade", "fade", "cut"]))
+            trans_combo.setCurrentText(seg.get("transition", "crossfade"))
             self.table.setCellWidget(row, 4, trans_combo)
 
             # AI Decision Reason
@@ -110,7 +112,7 @@ class EDLReviewDialog(QDialog):
             "start": "00:00:00",
             "end": "00:00:05",
             "camera": "Camera1",
-            "transition": "cut",
+            "transition": "crossfade",
             "reason": "Human manual addition"
         }
         self.edl_segments.append(new_seg)

@@ -35,7 +35,9 @@ CAMERA_LABELS = {
 }
 
 # Rule-Based Selection Settings
-MIN_SHOT_DURATION = 3.0  # seconds to prevent rapid flickering
+DEFAULT_TARGET_DURATION = 90.0 # seconds (assignment default range 60-180s)
+TRANSITION_TYPES = ["crossfade", "fade", "cut"]
+MIN_SHOT_DURATION = 4.0  # seconds to prevent rapid camera flickering
 MAX_SHOT_DURATION = 12.0 # seconds before forcing angle change
 MOTION_SAMPLE_INTERVAL = 0.5 # seconds between motion checks
 
