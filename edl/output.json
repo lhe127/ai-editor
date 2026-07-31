@@ -92,69 +92,9 @@
     {
         "segment_id": 10,
         "start": "00:01:20",
-        "end": "00:01:39",
+        "end": "00:01:30",
         "start_sec": 80.0,
-        "end_sec": 99.5,
-        "camera": "Camera2",
-        "transition": "crossfade",
-        "reason": "[Closing Ceremony] Returning to stage performance (Stage Center (Close-up))"
-    },
-    {
-        "segment_id": 11,
-        "start": "00:01:39",
-        "end": "00:01:43",
-        "start_sec": 99.5,
-        "end_sec": 103.5,
-        "camera": "Camera4",
-        "transition": "fade",
-        "reason": "[Closing Ceremony] Audience reaction (Audience Right)"
-    },
-    {
-        "segment_id": 12,
-        "start": "00:01:43",
-        "end": "00:02:03",
-        "start_sec": 103.5,
-        "end_sec": 123.0,
-        "camera": "Camera2",
-        "transition": "crossfade",
-        "reason": "[Closing Ceremony] Returning to stage performance (Stage Center (Close-up))"
-    },
-    {
-        "segment_id": 13,
-        "start": "00:02:03",
-        "end": "00:02:07",
-        "start_sec": 123.0,
-        "end_sec": 127.0,
-        "camera": "Camera4",
-        "transition": "fade",
-        "reason": "[Closing Ceremony] Audience reaction (Audience Right)"
-    },
-    {
-        "segment_id": 14,
-        "start": "00:02:07",
-        "end": "00:02:26",
-        "start_sec": 127.0,
-        "end_sec": 146.0,
-        "camera": "Camera2",
-        "transition": "crossfade",
-        "reason": "[Closing Ceremony] Returning to stage performance (Stage Center (Close-up))"
-    },
-    {
-        "segment_id": 15,
-        "start": "00:02:26",
-        "end": "00:02:30",
-        "start_sec": 146.0,
-        "end_sec": 150.0,
-        "camera": "Camera4",
-        "transition": "fade",
-        "reason": "[Closing Ceremony] Audience reaction (Audience Right)"
-    },
-    {
-        "segment_id": 16,
-        "start": "00:02:30",
-        "end": "00:03:00",
-        "start_sec": 150.0,
-        "end_sec": 180.0,
+        "end_sec": 90.0,
         "camera": "Camera2",
         "transition": "crossfade",
         "reason": "[Closing Ceremony] Returning to stage performance (Stage Center (Close-up))"
