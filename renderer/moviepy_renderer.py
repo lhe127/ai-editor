@@ -233,3 +233,4 @@ class MoviePyRenderer:
         except Exception as e:
             logger.error(f"Error during video rendering: {e}", exc_info=True)
             return False
+            return False

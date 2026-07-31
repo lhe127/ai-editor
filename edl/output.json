@@ -95,7 +95,9 @@
         "end_sec": 90.0,
         "start": "00:01:20",
         "end": "00:01:30",
-        "camera": "Camera4",
+        "start_sec": 80.0,
+        "end_sec": 90.0,
+        "camera": "Camera2",
         "transition": "crossfade",
         "reason": "[Closing Ceremony] Returning to stage performance (Stage Center (Close-up))"
     }

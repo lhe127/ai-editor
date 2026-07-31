@@ -160,6 +160,11 @@ class MainWindow(QMainWindow):
         self.btn_render.clicked.connect(self._on_render_video)
         toolbar_layout.addWidget(self.btn_render)
 
+        self.btn_preview_rendered = QPushButton("6. 📺 Preview Rendered Video")
+        self.btn_preview_rendered.setStyleSheet("background-color: #0284c7; font-weight: bold; color: white;")
+        self.btn_preview_rendered.clicked.connect(self._on_preview_rendered_video)
+        toolbar_layout.addWidget(self.btn_preview_rendered)
+
         control_box_layout.addLayout(toolbar_layout)
         main_layout.addWidget(control_box)
 
@@ -195,14 +200,27 @@ class MainWindow(QMainWindow):
         logger.info(message)
 
     def _auto_detect_videos(self):
-        """Auto-detect default sample videos in videos/ directory if present."""
+        """Auto-detect default sample videos in videos/ directory and subdirectories."""
         auto_found = {}
+        search_dirs = [config.VIDEOS_DIR, config.VIDEOS_DIR / "videoKindergarden"]
+
         for cam_id in config.CAMERA_KEYS:
-            for ext in [".mp4", ".mts", ".m2ts", ".mov"]:
-                target = config.VIDEOS_DIR / f"{cam_id.lower()}{ext}"
-                if target.exists():
-                    auto_found[cam_id] = str(target)
+            cam_num = "".join(filter(str.isdigit, cam_id)) or "1"
+            found_path = None
+            for s_dir in search_dirs:
+                if not s_dir.exists():
+                    continue
+                for entry in s_dir.iterdir():
+                    if entry.is_file() and entry.suffix.lower() in [".mp4", ".mts", ".mov", ".m2ts", ".avi"]:
+                        stem_clean = entry.stem.lower().replace(" ", "").replace("_", "")
+                        if f"camera{cam_num}" in stem_clean or f"cam{cam_num}" in stem_clean:
+                            found_path = str(entry)
+                            break
+                if found_path:
                     break
+
+            if found_path:
+                auto_found[cam_id] = found_path
 
         if auto_found:
             self.camera_files = auto_found
@@ -352,7 +370,59 @@ class MainWindow(QMainWindow):
         if success:
             self.progress_bar.setValue(100)
             self.log_info(f"SUCCESS: Rendered final video to {path_or_err}")
-            QMessageBox.information(self, "Render Complete", f"Final MP4 video exported to:\n{path_or_err}")
+            reply = QMessageBox.information(
+                self,
+                "Render Complete",
+                f"Final MP4 video exported to:\n{path_or_err}\n\nWould you like to preview the rendered video now?",
+                QMessageBox.Yes | QMessageBox.No
+            )
+            if reply == QMessageBox.Yes:
+                self._open_video_preview_dialog(path_or_err)
         else:
             self.log_info(f"Render Error: {path_or_err}")
             QMessageBox.critical(self, "Render Failed", f"Error during rendering:\n{path_or_err}")
+
+    def _on_preview_rendered_video(self):
+        """Open video preview window for rendered video or prompt user to select one."""
+        draft_path = config.OUTPUT_DIR / "final_draft.mp4"
+        final_path = config.OUTPUT_DIR / "final.mp4"
+
+        target_file = None
+        if final_path.exists():
+            target_file = str(final_path)
+        elif draft_path.exists():
+            target_file = str(draft_path)
+
+        if not target_file:
+            selected, _ = QFileDialog.getOpenFileName(
+                self,
+                "Select Video File to Preview",
+                str(config.OUTPUT_DIR),
+                "Video Files (*.mp4 *.mov *.mts);;All Files (*)"
+            )
+            if selected:
+                target_file = selected
+
+        if target_file:
+            self._open_video_preview_dialog(target_file)
+        else:
+            QMessageBox.warning(self, "No Video Found", "No rendered video file found in output/ directory. Please render a video first.")
+
+    def _open_video_preview_dialog(self, video_path: str):
+        """Open modal dialog to play video."""
+        from PySide6.QtWidgets import QDialog, QVBoxLayout
+        from ui.video_player import VideoPreviewWidget
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Video Preview - {os.path.basename(video_path)}")
+        dialog.resize(800, 520)
+
+        dlg_layout = QVBoxLayout(dialog)
+        player = VideoPreviewWidget(dialog)
+        dlg_layout.addWidget(player)
+
+        player.load_video(video_path)
+        player.player.play()
+        player.btn_play.setText("⏸️ Pause")
+
+        dialog.exec()

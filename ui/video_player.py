@@ -21,6 +21,8 @@ class VideoPreviewWidget(QWidget):
         self.start_boundary = 0.0
         self.end_boundary = 0.0
         self.current_video_path = ""
+        self._pending_seek_ms = None
+        self._ignore_position_events = False
 
         self._setup_ui()
         self._setup_player()
@@ -64,13 +66,31 @@ class VideoPreviewWidget(QWidget):
         try:
             self.player = QMediaPlayer(self)
             self.audio_output = QAudioOutput(self)
+            self.audio_output.setVolume(1.0)
             self.player.setAudioOutput(self.audio_output)
             self.player.setVideoOutput(self.video_widget)
 
             self.player.positionChanged.connect(self._on_position_changed)
             self.player.durationChanged.connect(self._on_duration_changed)
+            self.player.mediaStatusChanged.connect(self._on_media_status_changed)
+            self.player.errorOccurred.connect(self._on_error_occurred)
         except Exception as e:
             logger.error(f"Failed to initialize QMediaPlayer: {e}")
+
+    def _on_error_occurred(self, error, error_string):
+        logger.error(f"QMediaPlayer error [{error}]: {error_string}")
+        self.lbl_status.setText(f"❌ Playback Error: {error_string}")
+
+    def _on_media_status_changed(self, status):
+        if status in (QMediaPlayer.MediaStatus.LoadedMedia, QMediaPlayer.MediaStatus.BufferedMedia):
+            if self._pending_seek_ms is not None:
+                seek_ms = self._pending_seek_ms
+                self._pending_seek_ms = None
+                self.player.setPosition(seek_ms)
+                self.player.play()
+                self.btn_play.setText("⏸️ Pause")
+        elif status == QMediaPlayer.MediaStatus.EndOfMedia:
+            self.btn_play.setText("▶️ Play")
 
     def load_video(self, video_path: str):
         """Load video file into player."""
@@ -79,6 +99,7 @@ class VideoPreviewWidget(QWidget):
             return
 
         self.current_video_path = video_path
+        self._pending_seek_ms = None
         self.player.setSource(QUrl.fromLocalFile(video_path))
         self.lbl_status.setText(f"📹 Preview: {os.path.basename(video_path)}")
 
@@ -88,22 +109,26 @@ class VideoPreviewWidget(QWidget):
             self.lbl_status.setText(f"❌ File missing: {os.path.basename(video_path)}")
             return
 
-        if self.current_video_path != video_path:
-            self.load_video(video_path)
-
+        self._ignore_position_events = True
         self.start_boundary = max(0.0, start_sec)
         self.end_boundary = end_sec
-
-        # Seek to start timestamp (position in ms)
         start_ms = int(self.start_boundary * 1000)
-        self.player.setPosition(start_ms)
-        self.player.play()
-        self.btn_play.setText("⏸️ Pause")
 
         status_text = f"🎬 Preview: {os.path.basename(video_path)} [{start_sec:.1f}s - {end_sec:.1f}s]"
         if label:
             status_text += f" ({label})"
         self.lbl_status.setText(status_text)
+
+        if self.current_video_path != video_path:
+            self.current_video_path = video_path
+            self._pending_seek_ms = start_ms
+            self.player.setSource(QUrl.fromLocalFile(video_path))
+        else:
+            self.player.setPosition(start_ms)
+            self.player.play()
+            self.btn_play.setText("⏸️ Pause")
+
+        self._ignore_position_events = False
 
     def _toggle_play(self):
         if self.player.playbackState() == QMediaPlayer.PlayingState:
@@ -114,11 +139,14 @@ class VideoPreviewWidget(QWidget):
             self.btn_play.setText("⏸️ Pause")
 
     def _on_position_changed(self, position_ms: int):
+        if self._ignore_position_events:
+            return
+
         pos_sec = position_ms / 1000.0
         dur_ms = self.player.duration()
 
         # Enforce segment end boundary if active
-        if self.end_boundary > 0 and pos_sec >= self.end_boundary:
+        if self.end_boundary > 0 and pos_sec >= self.end_boundary and pos_sec >= self.start_boundary:
             self.player.pause()
             self.btn_play.setText("▶️ Play")
 

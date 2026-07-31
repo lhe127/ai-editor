@@ -2,6 +2,8 @@
 Human Review & EDL Editing Dialog/Window.
 Provides interactive table interface for human review and manual override before final rendering.
 """
+import os
+import logging
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
     QPushButton, QLabel, QComboBox, QMessageBox, QHeaderView, QFileDialog
@@ -12,6 +14,8 @@ from typing import List, Dict, Any
 import config
 from edl.edl_manager import EDLManager
 from ui.video_player import VideoPreviewWidget
+
+logger = logging.getLogger(__name__)
 
 
 class EDLReviewDialog(QDialog):
@@ -203,6 +207,32 @@ class EDLReviewDialog(QDialog):
             else:
                 QMessageBox.warning(self, "Load Failed", f"Could not parse valid EDL segments from:\n{edl_path}")
 
+    def _find_video_path(self, cam_id: str) -> str:
+        """Find video file path for a camera angle with multi-folder and naming fallback."""
+        # 1. Direct key match
+        if cam_id in self.camera_files and os.path.exists(self.camera_files[cam_id]):
+            return self.camera_files[cam_id]
+
+        # 2. Case-insensitive key match in camera_files
+        for k, v in self.camera_files.items():
+            if k.lower() == cam_id.lower() and os.path.exists(v):
+                return v
+
+        # 3. Auto-detect in videos/ directory and subdirectories
+        search_dirs = [config.VIDEOS_DIR, config.VIDEOS_DIR / "videoKindergarden"]
+        cam_num = "".join(filter(str.isdigit, cam_id)) or "1"
+
+        for search_dir in search_dirs:
+            if not search_dir.exists():
+                continue
+            for entry in search_dir.iterdir():
+                if entry.is_file() and entry.suffix.lower() in [".mp4", ".mts", ".mov", ".m2ts", ".avi"]:
+                    stem_clean = entry.stem.lower().replace(" ", "").replace("_", "")
+                    if f"camera{cam_num}" in stem_clean or f"cam{cam_num}" in stem_clean:
+                        return str(entry)
+
+        return ""
+
     def _on_table_selection_changed(self):
         row = self.table.currentRow()
         if row < 0 or row >= len(self.edl_segments):
@@ -214,14 +244,7 @@ class EDLReviewDialog(QDialog):
             cam_combo = self.table.cellWidget(row, 3)
             cam_id = cam_combo.currentText() if cam_combo else "Camera1"
 
-            video_path = self.camera_files.get(cam_id)
-            if not video_path:
-                # Auto-detect default camera file in videos/
-                for ext in [".mp4", ".mts", ".mov"]:
-                    target = config.VIDEOS_DIR / f"{cam_id.lower()}{ext}"
-                    if target.exists():
-                        video_path = str(target)
-                        break
+            video_path = self._find_video_path(cam_id)
 
             if video_path and os.path.exists(video_path):
                 self.preview_player.play_segment(
@@ -230,7 +253,9 @@ class EDLReviewDialog(QDialog):
                     end_sec=end_sec,
                     label=cam_id
                 )
-        except Exception:
-            pass
+            else:
+                self.preview_player.lbl_status.setText(f"❌ No video file found for {cam_id}")
+        except Exception as e:
+            logger.error(f"Error in preview table selection: {e}")
 
 
