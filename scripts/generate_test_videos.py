@@ -13,10 +13,15 @@ from PIL import Image, ImageDraw, ImageFont
 # Add project root to sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import importlib
+
 try:
     from moviepy import AudioArrayClip, VideoClip, CompositeVideoClip
 except ImportError:
-    from moviepy.editor import AudioArrayClip, VideoClip, CompositeVideoClip
+    _mp_editor = importlib.import_module("moviepy.editor")
+    AudioArrayClip = _mp_editor.AudioArrayClip
+    VideoClip = _mp_editor.VideoClip
+    CompositeVideoClip = _mp_editor.CompositeVideoClip
 
 import config
 

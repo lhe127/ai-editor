@@ -7,12 +7,17 @@ import os
 import logging
 from typing import List, Dict, Any
 
+import importlib
+
 try:
     from moviepy import VideoFileClip, CompositeVideoClip, concatenate_videoclips
     import moviepy.video.fx as vfx
 except ImportError:
-    from moviepy.editor import VideoFileClip, CompositeVideoClip, concatenate_videoclips
-    import moviepy.video.fx.all as vfx
+    _mp_editor = importlib.import_module("moviepy.editor")
+    VideoFileClip = _mp_editor.VideoFileClip
+    CompositeVideoClip = _mp_editor.CompositeVideoClip
+    concatenate_videoclips = _mp_editor.concatenate_videoclips
+    vfx = importlib.import_module("moviepy.video.fx.all")
 
 import config
 from synchronization.timeline import MasterTimeline

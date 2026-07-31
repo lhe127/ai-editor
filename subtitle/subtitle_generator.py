@@ -7,10 +7,15 @@ import logging
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
+import importlib
+
 try:
     from moviepy import ImageClip, ColorClip, CompositeVideoClip
 except ImportError:
-    from moviepy.editor import ImageClip, ColorClip, CompositeVideoClip
+    _mp_editor = importlib.import_module("moviepy.editor")
+    ImageClip = _mp_editor.ImageClip
+    ColorClip = _mp_editor.ColorClip
+    CompositeVideoClip = _mp_editor.CompositeVideoClip
 
 import config
 

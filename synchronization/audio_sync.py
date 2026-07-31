@@ -7,10 +7,13 @@ import logging
 import numpy as np
 from scipy import signal
 
+import importlib
+
 try:
     from moviepy import VideoFileClip
 except ImportError:
-    from moviepy.editor import VideoFileClip
+    _mp_editor = importlib.import_module("moviepy.editor")
+    VideoFileClip = _mp_editor.VideoFileClip
 
 logger = logging.getLogger(__name__)
 
