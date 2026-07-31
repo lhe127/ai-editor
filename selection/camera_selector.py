@@ -26,7 +26,8 @@ class CameraSelector:
         timeline: MasterTimeline,
         motion_map: Dict[str, List[float]],
         target_duration: float = None,
-        step_sec: float = 0.5
+        step_sec: float = 0.5,
+        audio_map: Dict[str, List[float]] = None
     ) -> List[Dict[str, Any]]:
         """
         Generate raw EDL segments over the requested target duration (or total duration of master timeline).
@@ -67,8 +68,10 @@ class CameraSelector:
                 current_cam=current_cam,
                 current_shot_length=shot_len,
                 previous_cam=previous_cam,
-                sample_interval=step_sec
+                sample_interval=step_sec,
+                audio_map=audio_map
             )
+
 
             if chosen_cam != current_cam and shot_len >= config.MIN_SHOT_DURATION:
                 # Save previous segment

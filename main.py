@@ -23,9 +23,10 @@ from selection.camera_selector import CameraSelector
 from edl.edl_manager import EDLManager
 from renderer.moviepy_renderer import MoviePyRenderer
 
-def run_cli_pipeline():
+def run_cli_pipeline(draft_mode: bool = False):
     """Execute complete end-to-end video pipeline in headless CLI mode."""
-    logger.info("=== Running BTIS3053 Video Editing Pipeline (CLI Mode) ===")
+    mode_str = "FAST DRAFT MODE (480p @ 15fps)" if draft_mode else "MASTER MODE (720p @ 30fps)"
+    logger.info(f"=== Running BTIS3053 Video Editing Pipeline (CLI Mode) [{mode_str}] ===")
 
     # 1. Detect Camera Files
     camera_files = {}
@@ -56,20 +57,31 @@ def run_cli_pipeline():
             duration=info["duration"]
         )
 
-    # 3. Motion Estimation & Camera Selection
-    logger.info("Step 2/4: Motion Estimation & Rule-Based Camera Selection...")
+    # 3. Multi-Modal Motion & Audio Loudness Estimation
+    logger.info("Step 2/4: Multi-Modal AI (Visual Motion + Audio Loudness & Applause Analysis)...")
     motion_analyzer = MotionAnalyzer()
     motion_map = motion_analyzer.get_multi_camera_motion_map(
         {k: v["file"] for k, v in sync_results.items()},
         timeline.total_duration
     )
 
-    selector = CameraSelector()
-    edl_segments = selector.generate_edl(timeline, motion_map)
+    from selection.audio_analysis import AudioLoudnessAnalyzer
+    audio_analyzer = AudioLoudnessAnalyzer()
+    audio_map = audio_analyzer.get_multi_camera_audio_map(
+        {k: v["file"] for k, v in sync_results.items()},
+        timeline.total_duration
+    )
+    applause_peaks = audio_analyzer.detect_applause_spikes(audio_map)
+    logger.info(f"Detected {len(applause_peaks)} audience applause volume surges across audio tracks.")
 
-    edl_path = config.EDL_DIR / "output.json"
-    EDLManager.save_edl(edl_segments, str(edl_path))
-    logger.info(f"Step 3/4: Saved JSON EDL ({len(edl_segments)} segments) to {edl_path}")
+    selector = CameraSelector()
+    edl_segments = selector.generate_edl(timeline, motion_map, audio_map=audio_map)
+
+    edl_json_path = config.DEFAULT_EDL_JSON_PATH
+    edl_csv_path = config.DEFAULT_EDL_CSV_PATH
+    EDLManager.save_edl_json(edl_segments, str(edl_json_path))
+    EDLManager.save_edl_csv(edl_segments, str(edl_csv_path))
+    logger.info(f"Step 3/4: Saved Dual EDLs ({len(edl_segments)} segments) -> JSON: {edl_json_path} | CSV: {edl_csv_path}")
 
     # Validate EDL
     valid, msg = EDLManager.validate_edl(edl_segments)
@@ -77,9 +89,10 @@ def run_cli_pipeline():
 
     # 4. Render Video
     logger.info("Step 4/4: MoviePy Video Rendering...")
-    output_mp4 = config.OUTPUT_DIR / "final.mp4"
+    out_name = "final_draft.mp4" if draft_mode else "final.mp4"
+    output_mp4 = config.OUTPUT_DIR / out_name
     renderer = MoviePyRenderer()
-    success = renderer.render_edl(edl_segments, timeline, str(output_mp4))
+    success = renderer.render_edl(edl_segments, timeline, str(output_mp4), draft_mode=draft_mode)
 
     if success:
         logger.info(f"=== PIPELINE COMPLETED SUCCESSFULLY! Output: {output_mp4} ===")
@@ -100,12 +113,14 @@ def run_gui_app():
 def main():
     parser = argparse.ArgumentParser(description="BTIS3053 AI-Assisted Multi-Camera Kindergarten Graduation Video Editor")
     parser.add_argument("--cli", action="store_true", help="Run automated pipeline in headless CLI mode")
+    parser.add_argument("--draft", action="store_true", help="Enable fast low-resource 480p @ 15fps draft render mode")
     args = parser.parse_args()
 
     if args.cli:
-        run_cli_pipeline()
+        run_cli_pipeline(draft_mode=args.draft)
     else:
         run_gui_app()
+
 
 if __name__ == "__main__":
     main()

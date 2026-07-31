@@ -8,8 +8,12 @@ output/
 *.avi
 *.mov
 
-# Render outputs
-finalTEMP_MPY_wvf_snd.mp4
+# Build & Release Artifacts
+build/
+dist/
+*.zip
+*.exe
+scratch_docx.txt
 
 # Python cache
 __pycache__/
