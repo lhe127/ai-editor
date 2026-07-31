@@ -10,7 +10,7 @@ from pathlib import Path
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QLabel, QFileDialog, QTableWidget, QTableWidgetItem, QHeaderView,
-    QProgressBar, QTextEdit, QMessageBox, QGroupBox, QSpinBox, QScrollArea
+    QProgressBar, QTextEdit, QMessageBox, QGroupBox, QSpinBox, QScrollArea, QCheckBox
 )
 from PySide6.QtCore import Qt, QThread, Signal
 
@@ -47,11 +47,12 @@ class RenderWorker(QThread):
     progress_signal = Signal(int)
     finished_signal = Signal(bool, str)
 
-    def __init__(self, edl_segments: list, timeline: MasterTimeline, output_path: str):
+    def __init__(self, edl_segments: list, timeline: MasterTimeline, output_path: str, draft_mode: bool = False):
         super().__init__()
         self.edl_segments = edl_segments
         self.timeline = timeline
         self.output_path = output_path
+        self.draft_mode = draft_mode
 
     def run(self):
         try:
@@ -60,11 +61,13 @@ class RenderWorker(QThread):
                 edl_segments=self.edl_segments,
                 timeline=self.timeline,
                 output_path=self.output_path,
-                progress_callback=self.progress_signal.emit
+                progress_callback=self.progress_signal.emit,
+                draft_mode=self.draft_mode
             )
             self.finished_signal.emit(success, self.output_path)
         except Exception as e:
             self.finished_signal.emit(False, str(e))
+
 
 
 class MainWindow(QMainWindow):
@@ -122,8 +125,16 @@ class MainWindow(QMainWindow):
         self.spin_target_duration.setStyleSheet("font-size: 13px; font-weight: bold; padding: 3px 8px;")
         top_controls.addWidget(self.spin_target_duration)
 
+        top_controls.addSpacing(25)
+
+        self.chk_draft = QCheckBox("⚡ Draft Mode (Fast 480p preview)")
+        self.chk_draft.setToolTip("Enable low-resource fast 480p @ 15fps rendering for quick testing (~5s)")
+        self.chk_draft.setStyleSheet("font-weight: bold; color: #38bdf8; font-size: 13px;")
+        top_controls.addWidget(self.chk_draft)
+
         top_controls.addStretch()
         control_box_layout.addLayout(top_controls)
+
 
         # Workflow Buttons Toolbar
         toolbar_layout = QHBoxLayout()
@@ -269,27 +280,32 @@ class MainWindow(QMainWindow):
 
         try:
             target_dur = float(self.spin_target_duration.value())
-            self.log_info(f"Running motion estimation & camera selection rules (Target Duration: {target_dur:.1f}s)...")
+            self.log_info(f"Running Multi-Modal AI (Motion + Audio Loudness & Applause Analysis, Target: {target_dur:.1f}s)...")
 
+            valid_files = {k: v["file"] for k, v in self.sync_results.items() if "file" in v}
             motion_analyzer = MotionAnalyzer()
-            motion_map = motion_analyzer.get_multi_camera_motion_map(
-                {k: v["file"] for k, v in self.sync_results.items() if "file" in v},
-                self.timeline.total_duration
-            )
+            motion_map = motion_analyzer.get_multi_camera_motion_map(valid_files, self.timeline.total_duration)
+
+            from selection.audio_analysis import AudioLoudnessAnalyzer
+            audio_analyzer = AudioLoudnessAnalyzer()
+            audio_map = audio_analyzer.get_multi_camera_audio_map(valid_files, self.timeline.total_duration)
 
             selector = CameraSelector()
             self.edl_segments = selector.generate_edl(
                 self.timeline,
                 motion_map,
-                target_duration=target_dur
+                target_duration=target_dur,
+                audio_map=audio_map
             )
 
-            edl_path = str(config.EDL_DIR / "output.json")
-            EDLManager.save_edl(self.edl_segments, edl_path)
+
+            EDLManager.save_edl_json(self.edl_segments, str(config.DEFAULT_EDL_JSON_PATH))
+            EDLManager.save_edl_csv(self.edl_segments, str(config.DEFAULT_EDL_CSV_PATH))
 
             effective_dur = min(self.timeline.total_duration, target_dur) if self.timeline.total_duration > 0 else target_dur
             self.timeline_widget.set_data(self.sync_results, self.edl_segments, effective_dur)
-            self.log_info(f"Generated {len(self.edl_segments)} smooth EDL cut segments up to {effective_dur:.1f}s. Saved to {edl_path}")
+            self.log_info(f"Generated {len(self.edl_segments)} smooth EDL cut segments up to {effective_dur:.1f}s. Saved JSON & CSV to {config.EDL_DIR}")
+
 
         except Exception as e:
             self.log_info(f"EDL Generation Error: {e}")
@@ -301,8 +317,9 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "No EDL", "Please click 'Generate AI EDL' first.")
             return
 
-        dialog = EDLReviewDialog(self.edl_segments, self)
+        dialog = EDLReviewDialog(self.edl_segments, self.camera_files, self)
         if dialog.exec():
+
             self.edl_segments = dialog.edl_segments
             edl_path = str(config.EDL_DIR / "output.json")
             EDLManager.save_edl(self.edl_segments, edl_path)
@@ -319,14 +336,17 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "EDL Validation Failed", msg)
             return
 
-        out_path = str(config.OUTPUT_DIR / "final.mp4")
-        self.log_info(f"Launching MoviePy render pipeline -> {out_path}...")
+        is_draft = self.chk_draft.isChecked()
+        out_name = "final_draft.mp4" if is_draft else "final.mp4"
+        out_path = str(config.OUTPUT_DIR / out_name)
+        self.log_info(f"Launching MoviePy render pipeline -> {out_path} [Draft Mode: {is_draft}]...")
         self.progress_bar.setValue(5)
 
-        self.render_thread = RenderWorker(self.edl_segments, self.timeline, out_path)
+        self.render_thread = RenderWorker(self.edl_segments, self.timeline, out_path, draft_mode=is_draft)
         self.render_thread.progress_signal.connect(self.progress_bar.setValue)
         self.render_thread.finished_signal.connect(self._on_render_finished)
         self.render_thread.start()
+
 
     def _on_render_finished(self, success: bool, path_or_err: str):
         if success:

@@ -20,10 +20,21 @@ MUSIC_DIR = ASSETS_DIR / "music"
 for dir_path in [VIDEOS_DIR, EDL_DIR, OUTPUT_DIR, ASSETS_DIR, MUSIC_DIR]:
     dir_path.mkdir(parents=True, exist_ok=True)
 
+# Programme Schedule & EDL Paths
+PROGRAMME_CSV_PATH = ASSETS_DIR / "programme.csv"
+DEFAULT_EDL_JSON_PATH = EDL_DIR / "output.json"
+DEFAULT_EDL_CSV_PATH = EDL_DIR / "output.csv"
+
+
 # Default Video Parameters
 DEFAULT_FPS = 30
 DEFAULT_RESOLUTION = (1280, 720) # Width x Height
 DEFAULT_ASPECT_RATIO = "16:9"
+
+# Fast Low-Resource Draft Parameters
+DRAFT_FPS = 15
+DRAFT_RESOLUTION = (854, 480) # 480p SD for ultra-fast previews
+
 
 # Camera Source Configuration
 CAMERA_KEYS = ["Camera1", "Camera2", "Camera3", "Camera4"]

@@ -79,24 +79,31 @@ class MoviePyRenderer:
         output_path: str = str(config.OUTPUT_DIR / "final.mp4"),
         include_title: bool = True,
         include_outro: bool = True,
-        progress_callback=None
+        progress_callback=None,
+        draft_mode: bool = False
     ) -> bool:
         """
         Render final video from EDL and MasterTimeline using smooth cross-dissolve transitions.
+        Supports fast low-resource draft mode (480p @ 15 FPS).
         """
         if not edl_segments:
             logger.error("Empty EDL segments list. Cannot render.")
             return False
 
-        logger.info(f"Beginning MoviePy video rendering pipeline to {output_path}...")
+        target_res = config.DRAFT_RESOLUTION if draft_mode else self.resolution
+        target_fps = config.DRAFT_FPS if draft_mode else self.fps
+        sub_gen = SubtitleGenerator(resolution=target_res) if draft_mode else self.subtitle_gen
+
+        logger.info(f"Beginning MoviePy video rendering pipeline -> {output_path} [{'DRAFT (480p@15fps)' if draft_mode else 'MASTER (720p@30fps)'}]...")
         processed_items = []
         open_video_clips = []
+
 
         try:
             # 1. Add Opening Title Card
             if include_title:
                 logger.info("Generating Opening Title Card...")
-                title_clip = self.subtitle_gen.create_title_card()
+                title_clip = sub_gen.create_title_card()
                 processed_items.append({
                     "clip": title_clip,
                     "transition": "fade"
@@ -135,17 +142,17 @@ class MoviePyRenderer:
                 sub_clip = helper_subclip(raw_clip, actual_start, actual_end)
 
                 # Resize to target resolution if needed
-                if sub_clip.size != list(self.resolution):
+                if sub_clip.size != list(target_res):
                     if hasattr(sub_clip, "resized"):
-                        sub_clip = sub_clip.resized(self.resolution)
+                        sub_clip = sub_clip.resized(target_res)
                     elif hasattr(sub_clip, "resize"):
-                        sub_clip = sub_clip.resize(self.resolution)
+                        sub_clip = sub_clip.resize(target_res)
 
                 segment_duration = sub_clip.duration
 
                 # Attach Lower-Third overlay
                 cam_label = config.CAMERA_LABELS.get(cam_id, cam_id)
-                lower_third = self.subtitle_gen.create_lower_third(
+                lower_third = sub_gen.create_lower_third(
                     camera_label=f"Angle: {cam_label}",
                     reason=reason,
                     duration=min(4.0, segment_duration)
@@ -161,7 +168,7 @@ class MoviePyRenderer:
             # 3. Add Closing Outro Credits Card
             if include_outro:
                 logger.info("Generating Closing Outro Credits Card...")
-                credits_clip = self.subtitle_gen.create_credits_card()
+                credits_clip = sub_gen.create_credits_card()
                 processed_items.append({
                     "clip": credits_clip,
                     "transition": "crossfade"
@@ -193,19 +200,20 @@ class MoviePyRenderer:
                 positioned_clips.append(clip)
                 current_t = start_t + dur
 
-            final_clip = CompositeVideoClip(positioned_clips, size=self.resolution)
+            final_clip = CompositeVideoClip(positioned_clips, size=target_res)
             final_clip = helper_with_duration(final_clip, current_t)
 
             # 5. Export MP4 file
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
-            logger.info(f"Writing video file to {output_path}...")
+            logger.info(f"Writing video file to {output_path} (FPS: {target_fps})...")
 
             final_clip.write_videofile(
                 output_path,
-                fps=self.fps,
+                fps=target_fps,
                 codec="libx264",
                 audio_codec="aac",
                 preset="ultrafast",
+
                 threads=4,
                 logger="bar"
             )

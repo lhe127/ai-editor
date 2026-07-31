@@ -1,0 +1,17 @@
+﻿segment_id,start,end,start_sec,end_sec,camera,transition,reason
+1,00:00:00,00:00:05,0.0,5.0,Camera1,fade,Opening stage shot
+2,00:00:05,00:00:12,5.0,12.5,Camera2,crossfade,[Opening Ceremony] Switching to active stage angle: Stage Center (Close-up)
+3,00:00:12,00:00:18,12.5,18.0,Camera1,fade,[Opening Ceremony] Switching to active stage angle: Stage Front (Wide)
+4,00:00:18,00:00:22,18.0,22.0,Camera4,crossfade,[Opening Ceremony] Audience reaction (Audience Right)
+5,00:00:22,00:00:27,22.0,27.5,Camera1,fade,[Graduation Performance] Returning to stage performance (Stage Front (Wide))
+6,00:00:27,00:00:57,27.5,57.5,Camera2,crossfade,[Graduation Performance] Switching to active stage angle: Stage Center (Close-up)
+7,00:00:57,00:01:06,57.5,66.5,Camera1,fade,[Certificate Presentation] Switching to active stage angle: Stage Front (Wide)
+8,00:01:06,00:01:16,66.5,76.0,Camera2,crossfade,[Certificate Presentation] Switching to active stage angle: Stage Center (Close-up)
+9,00:01:16,00:01:20,76.0,80.0,Camera4,fade,[Certificate Presentation] Audience reaction (Audience Right)
+10,00:01:20,00:01:39,80.0,99.5,Camera2,crossfade,[Closing Ceremony] Returning to stage performance (Stage Center (Close-up))
+11,00:01:39,00:01:43,99.5,103.5,Camera4,fade,[Closing Ceremony] Audience reaction (Audience Right)
+12,00:01:43,00:02:03,103.5,123.0,Camera2,crossfade,[Closing Ceremony] Returning to stage performance (Stage Center (Close-up))
+13,00:02:03,00:02:07,123.0,127.0,Camera4,fade,[Closing Ceremony] Audience reaction (Audience Right)
+14,00:02:07,00:02:26,127.0,146.0,Camera2,crossfade,[Closing Ceremony] Returning to stage performance (Stage Center (Close-up))
+15,00:02:26,00:02:30,146.0,150.0,Camera4,fade,[Closing Ceremony] Audience reaction (Audience Right)
+16,00:02:30,00:03:00,150.0,180.0,Camera2,crossfade,[Closing Ceremony] Returning to stage performance (Stage Center (Close-up))

@@ -21,6 +21,22 @@ import config
 
 logger = logging.getLogger(__name__)
 
+def _get_font(font_size: int) -> ImageFont.ImageFont:
+    """Attempt to load a font supporting Unicode & Chinese CJK characters (Microsoft YaHei, SimHei, Arial)."""
+    font_candidates = [
+        "msyh.ttc",       # Microsoft YaHei (Windows Chinese)
+        "msyh.ttf",
+        "simhei.ttf",     # SimHei (Windows Chinese)
+        "simsun.ttc",     # SimSun (Windows Chinese)
+        "arial.ttf",      # Standard Arial
+    ]
+    for font_name in font_candidates:
+        try:
+            return ImageFont.truetype(font_name, font_size)
+        except IOError:
+            continue
+    return ImageFont.load_default()
+
 class SubtitleGenerator:
     def __init__(self, resolution: tuple[int, int] = config.DEFAULT_RESOLUTION):
         self.width, self.height = resolution
@@ -34,17 +50,13 @@ class SubtitleGenerator:
         bg_color: tuple[int, int, int, int] = (0, 0, 0, 180),
         subtitle_text: str = None
     ) -> np.ndarray:
-        """Create RGBA numpy array containing styled text box."""
+        """Create RGBA numpy array containing styled text box with CJK Chinese font support."""
         w, h = size
         img = Image.new("RGBA", (w, h), bg_color)
         draw = ImageDraw.Draw(img)
 
-        try:
-            font = ImageFont.truetype("arial.ttf", font_size)
-            sub_font = ImageFont.truetype("arial.ttf", int(font_size * 0.6))
-        except IOError:
-            font = ImageFont.load_default()
-            sub_font = font
+        font = _get_font(font_size)
+        sub_font = _get_font(int(font_size * 0.6))
 
         # Calculate main text position
         bbox = draw.textbbox((0, 0), text, font=font)
@@ -64,6 +76,7 @@ class SubtitleGenerator:
             draw.text((sx, sy), subtitle_text, font=sub_font, fill=(220, 220, 220, 255))
 
         return np.array(img)
+
 
     def create_title_card(
         self,
@@ -137,15 +150,12 @@ class SubtitleGenerator:
         # Draw left gold accent bar
         draw.rectangle([0, 0, 8, h], fill=(255, 215, 0, 255))
 
-        try:
-            title_font = ImageFont.truetype("arial.ttf", 20)
-            desc_font = ImageFont.truetype("arial.ttf", 14)
-        except IOError:
-            title_font = ImageFont.load_default()
-            desc_font = title_font
+        title_font = _get_font(20)
+        desc_font = _get_font(14)
 
         draw.text((20, 10), camera_label, font=title_font, fill=(255, 255, 255, 255))
         draw.text((20, 38), f"AI Decision: {reason}", font=desc_font, fill=(200, 200, 200, 255))
+
 
         img_array = np.array(img)
         clip = ImageClip(img_array)
