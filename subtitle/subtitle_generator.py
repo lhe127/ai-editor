@@ -11,15 +11,37 @@ import importlib
 
 try:
     from moviepy import ImageClip, ColorClip, CompositeVideoClip
-except ImportError:
-    _mp_editor = importlib.import_module("moviepy.editor")
-    ImageClip = _mp_editor.ImageClip
-    ColorClip = _mp_editor.ColorClip
-    CompositeVideoClip = _mp_editor.CompositeVideoClip
+except (ImportError, ModuleNotFoundError):
+    try:
+        _mp_editor = importlib.import_module("moviepy.editor")
+        ImageClip = _mp_editor.ImageClip
+        ColorClip = _mp_editor.ColorClip
+        CompositeVideoClip = _mp_editor.CompositeVideoClip
+    except (ImportError, ModuleNotFoundError):
+        from moviepy.video.VideoClip import ImageClip, ColorClip
+        from moviepy.video.compositing.CompositeVideoClip import CompositeVideoClip
 
 import config
 
 logger = logging.getLogger(__name__)
+
+def get_audio_array_clip(array, fps: int = 44100):
+    """Cross-version MoviePy AudioArrayClip factory."""
+    try:
+        from moviepy import AudioArrayClip
+        return AudioArrayClip(array, fps=fps)
+    except Exception:
+        pass
+    try:
+        from moviepy.audio.AudioClip import AudioArrayClip
+        return AudioArrayClip(array, fps=fps)
+    except Exception:
+        pass
+    try:
+        from moviepy.editor import AudioArrayClip
+        return AudioArrayClip(array, fps=fps)
+    except Exception:
+        return None
 
 def _get_font(font_size: int) -> ImageFont.ImageFont:
     """Attempt to load a font supporting Unicode & Chinese CJK characters (Microsoft YaHei, SimHei, Arial)."""
@@ -94,15 +116,12 @@ class SubtitleGenerator:
             subtitle_text=subtitle
         )
         clip = ImageClip(img_array).with_duration(duration) if hasattr(ImageClip, "with_duration") else ImageClip(img_array).set_duration(duration)
-        try:
-            from moviepy import AudioArrayClip
-        except ImportError:
-            from moviepy.editor import AudioArrayClip
-        silent_audio = AudioArrayClip(np.zeros((int(duration * 44100), 2)), fps=44100)
-        if hasattr(clip, "with_audio"):
-            clip = clip.with_audio(silent_audio)
-        else:
-            clip = clip.set_audio(silent_audio)
+        silent_audio = get_audio_array_clip(np.zeros((int(duration * 44100), 2)), fps=44100)
+        if silent_audio is not None:
+            if hasattr(clip, "with_audio"):
+                clip = clip.with_audio(silent_audio)
+            else:
+                clip = clip.set_audio(silent_audio)
         return clip
 
     def create_credits_card(
@@ -125,46 +144,102 @@ class SubtitleGenerator:
             subtitle_text=credits_sub
         )
         clip = ImageClip(img_array).with_duration(duration) if hasattr(ImageClip, "with_duration") else ImageClip(img_array).set_duration(duration)
-        try:
-            from moviepy import AudioArrayClip
-        except ImportError:
-            from moviepy.editor import AudioArrayClip
-        silent_audio = AudioArrayClip(np.zeros((int(duration * 44100), 2)), fps=44100)
-        if hasattr(clip, "with_audio"):
-            clip = clip.with_audio(silent_audio)
-        else:
-            clip = clip.set_audio(silent_audio)
+        silent_audio = get_audio_array_clip(np.zeros((int(duration * 44100), 2)), fps=44100)
+        if silent_audio is not None:
+            if hasattr(clip, "with_audio"):
+                clip = clip.with_audio(silent_audio)
+            else:
+                clip = clip.set_audio(silent_audio)
         return clip
 
     def create_lower_third(
+
         self,
         camera_label: str,
         reason: str,
         duration: float
     ) -> ImageClip:
-        """Create Lower-Third overlay clip positioned at bottom-left corner."""
-        w, h = 500, 70
-        img = Image.new("RGBA", (w, h), (15, 23, 42, 200)) # Semi-transparent dark box
+        """Create Lower-Third overlay clip positioned at top-left corner (TV Broadcast style)."""
+        w, h = 450, 60
+        img = Image.new("RGBA", (w, h), (15, 23, 42, 210)) # Semi-transparent dark box
         draw = ImageDraw.Draw(img)
 
         # Draw left gold accent bar
-        draw.rectangle([0, 0, 8, h], fill=(255, 215, 0, 255))
+        draw.rectangle([0, 0, 6, h], fill=(255, 215, 0, 255))
 
-        title_font = _get_font(20)
-        desc_font = _get_font(14)
+        title_font = _get_font(18)
+        desc_font = _get_font(13)
 
-        draw.text((20, 10), camera_label, font=title_font, fill=(255, 255, 255, 255))
-        draw.text((20, 38), f"AI Decision: {reason}", font=desc_font, fill=(200, 200, 200, 255))
-
+        draw.text((16, 8), camera_label, font=title_font, fill=(255, 255, 255, 255))
+        draw.text((16, 32), f"AI Decision: {reason}", font=desc_font, fill=(200, 200, 200, 255))
 
         img_array = np.array(img)
         clip = ImageClip(img_array)
 
-        # Position at bottom-left corner
-        pos = (30, self.height - 100)
+        # Position at top-left corner to avoid overlapping bottom subtitles
+        pos = (20, 20)
         if hasattr(clip, "with_duration"):
             clip = clip.with_duration(duration).with_position(pos)
         else:
             clip = clip.set_duration(duration).set_position(pos)
 
         return clip
+
+    def create_subtitle_overlay(
+        self,
+        subtitle_text: str,
+        duration: float
+    ) -> ImageClip:
+        """Create Speech Subtitle Caption overlay clip cleanly centered at bottom-center."""
+        if not subtitle_text or not subtitle_text.strip():
+            img = Image.new("RGBA", (self.width, 1), (0, 0, 0, 0))
+            clip = ImageClip(np.array(img))
+            return clip.with_duration(duration) if hasattr(clip, "with_duration") else clip.set_duration(duration)
+
+        import textwrap
+        wrapped_lines = textwrap.wrap(subtitle_text.strip(), width=48)
+        if not wrapped_lines:
+            wrapped_lines = [subtitle_text.strip()]
+
+        font = _get_font(18)
+        line_height = 24
+        padding_v = 10
+        padding_h = 20
+        sub_h = (len(wrapped_lines) * line_height) + (padding_v * 2)
+
+        # Calculate width to fit widest text line cleanly
+        draw_temp = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
+        max_text_w = 0
+        for line in wrapped_lines:
+            bbox = draw_temp.textbbox((0, 0), line, font=font)
+            max_text_w = max(max_text_w, bbox[2] - bbox[0])
+
+        sub_w = min(int(self.width * 0.85), max_text_w + (padding_h * 2))
+        sub_w = max(360, sub_w)
+
+        img = Image.new("RGBA", (sub_w, sub_h), (15, 23, 42, 220)) # Sleek dark slate
+        draw = ImageDraw.Draw(img)
+
+        # Draw gold accent bar at top of subtitle box
+        draw.line([(0, 0), (sub_w, 0)], fill=(255, 215, 0, 255), width=2)
+
+        for i, line in enumerate(wrapped_lines):
+            bbox = draw.textbbox((0, 0), line, font=font)
+            tw = bbox[2] - bbox[0]
+            x = (sub_w - tw) // 2
+            y = padding_v + (i * line_height)
+            draw.text((x, y), line, font=font, fill=(255, 255, 255, 255))
+
+        img_array = np.array(img)
+        clip = ImageClip(img_array)
+
+        # Position cleanly centered at bottom of frame
+        pos = ((self.width - sub_w) // 2, self.height - sub_h - 20)
+        if hasattr(clip, "with_duration"):
+            clip = clip.with_duration(duration).with_position(pos)
+        else:
+            clip = clip.set_duration(duration).set_position(pos)
+
+        return clip
+
+

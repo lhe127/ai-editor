@@ -75,13 +75,15 @@ def run_cli_pipeline(draft_mode: bool = False):
     logger.info(f"Detected {len(applause_peaks)} audience applause volume surges across audio tracks.")
 
     selector = CameraSelector()
-    edl_segments = selector.generate_edl(timeline, motion_map, audio_map=audio_map)
+    edl_segments = selector.generate_edl(timeline, motion_map, audio_map=audio_map, transcribe_subtitles=True)
 
     edl_json_path = config.DEFAULT_EDL_JSON_PATH
     edl_csv_path = config.DEFAULT_EDL_CSV_PATH
     EDLManager.save_edl_json(edl_segments, str(edl_json_path))
     EDLManager.save_edl_csv(edl_segments, str(edl_csv_path))
-    logger.info(f"Step 3/4: Saved Dual EDLs ({len(edl_segments)} segments) -> JSON: {edl_json_path} | CSV: {edl_csv_path}")
+    sub_count = sum(1 for seg in edl_segments if seg.get("subtitle"))
+    logger.info(f"Step 3/4: Generated Dual EDLs ({len(edl_segments)} segments, {sub_count} transcribed subtitles) -> JSON: {edl_json_path} | CSV: {edl_csv_path}")
+
 
     # Validate EDL
     valid, msg = EDLManager.validate_edl(edl_segments)

@@ -17,11 +17,17 @@ import importlib
 
 try:
     from moviepy import AudioArrayClip, VideoClip, CompositeVideoClip
-except ImportError:
-    _mp_editor = importlib.import_module("moviepy.editor")
-    AudioArrayClip = _mp_editor.AudioArrayClip
-    VideoClip = _mp_editor.VideoClip
-    CompositeVideoClip = _mp_editor.CompositeVideoClip
+except (ImportError, ModuleNotFoundError):
+    try:
+        _mp_editor = importlib.import_module("moviepy.editor")
+        AudioArrayClip = _mp_editor.AudioArrayClip
+        VideoClip = _mp_editor.VideoClip
+        CompositeVideoClip = _mp_editor.CompositeVideoClip
+    except (ImportError, ModuleNotFoundError):
+        from moviepy.audio.AudioClip import AudioArrayClip
+        from moviepy.video.VideoClip import VideoClip
+        from moviepy.video.compositing.CompositeVideoClip import CompositeVideoClip
+
 
 import config
 

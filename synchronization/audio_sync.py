@@ -11,9 +11,13 @@ import importlib
 
 try:
     from moviepy import VideoFileClip
-except ImportError:
-    _mp_editor = importlib.import_module("moviepy.editor")
-    VideoFileClip = _mp_editor.VideoFileClip
+except (ImportError, ModuleNotFoundError):
+    try:
+        _mp_editor = importlib.import_module("moviepy.editor")
+        VideoFileClip = _mp_editor.VideoFileClip
+    except (ImportError, ModuleNotFoundError):
+        from moviepy.video.io.VideoFileClip import VideoFileClip
+
 
 logger = logging.getLogger(__name__)
 
