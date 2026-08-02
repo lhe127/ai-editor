@@ -9,6 +9,8 @@ from synchronization.timeline import MasterTimeline
 from selection.motion import MotionAnalyzer
 from selection.rules import RuleEngine
 
+from subtitle.whisper_transcriber import WhisperTranscriber
+
 logger = logging.getLogger(__name__)
 
 def seconds_to_tc(seconds: float) -> str:
@@ -27,8 +29,10 @@ class CameraSelector:
         motion_map: Dict[str, List[float]],
         target_duration: float = None,
         step_sec: float = 0.5,
-        audio_map: Dict[str, List[float]] = None
+        audio_map: Dict[str, List[float]] = None,
+        transcribe_subtitles: bool = True
     ) -> List[Dict[str, Any]]:
+
         """
         Generate raw EDL segments over the requested target duration (or total duration of master timeline).
         Guaranteeing:
@@ -117,10 +121,29 @@ class CameraSelector:
                 "end_sec": round(seg["end_sec"], 2),
                 "camera": seg["camera"],
                 "transition": transition,
-                "reason": seg["reason"]
+                "reason": seg["reason"],
+                "subtitle": ""
             })
 
+        if transcribe_subtitles:
+            primary_file = None
+            primary_offset = 0.0
+            for cam in config.CAMERA_KEYS:
+                if cam in timeline.tracks and timeline.tracks[cam].file_path:
+                    primary_file = timeline.tracks[cam].file_path
+                    primary_offset = getattr(timeline.tracks[cam], "offset_sec", 0.0)
+                    break
+
+            transcriber = WhisperTranscriber()
+            edl_segments = transcriber.transcribe_edl_segments(
+                edl_segments=edl_segments,
+                video_path=primary_file,
+                offset_sec=primary_offset
+            )
+
         return edl_segments
+
+
 
     def _enforce_assignment_constraints(self, segments: List[Dict[str, Any]], total_duration: float) -> List[Dict[str, Any]]:
         """

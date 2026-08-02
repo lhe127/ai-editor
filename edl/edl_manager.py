@@ -28,7 +28,7 @@ class EDLManager:
         """Save EDL segments to CSV file compatible with Microsoft Excel."""
         try:
             Path(filepath).parent.mkdir(parents=True, exist_ok=True)
-            fieldnames = ["segment_id", "start", "end", "start_sec", "end_sec", "camera", "transition", "reason"]
+            fieldnames = ["segment_id", "start", "end", "start_sec", "end_sec", "camera", "transition", "reason", "subtitle"]
             with open(filepath, 'w', newline='', encoding='utf-8-sig') as f:
                 writer = csv.DictWriter(f, fieldnames=fieldnames)
                 writer.writeheader()
@@ -41,7 +41,8 @@ class EDLManager:
                         "end_sec": seg.get("end_sec", 0.0),
                         "camera": seg.get("camera", "Camera1"),
                         "transition": seg.get("transition", "crossfade"),
-                        "reason": seg.get("reason", "")
+                        "reason": seg.get("reason", ""),
+                        "subtitle": seg.get("subtitle", "")
                     })
             logger.info(f"Successfully saved EDL CSV to {filepath}")
             return True
@@ -92,13 +93,15 @@ class EDLManager:
                         "end_sec": end_sec,
                         "camera": row.get("camera", "Camera1"),
                         "transition": row.get("transition", "crossfade"),
-                        "reason": row.get("reason", "CSV Import")
+                        "reason": row.get("reason", "CSV Import"),
+                        "subtitle": row.get("subtitle", "")
                     })
             logger.info(f"Loaded {len(segments)} EDL segments from CSV {filepath}")
             return segments
         except Exception as e:
             logger.error(f"Failed to load EDL CSV from {filepath}: {e}")
             return []
+
 
     @staticmethod
     def load_edl(filepath: str) -> List[Dict[str, Any]]:

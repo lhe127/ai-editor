@@ -298,7 +298,7 @@ class MainWindow(QMainWindow):
 
         try:
             target_dur = float(self.spin_target_duration.value())
-            self.log_info(f"Running Multi-Modal AI (Motion + Audio Loudness & Applause Analysis, Target: {target_dur:.1f}s)...")
+            self.log_info(f"Running Multi-Modal AI (Motion + Audio Loudness & Speech Subtitle Transcription, Target: {target_dur:.1f}s)...")
 
             valid_files = {k: v["file"] for k, v in self.sync_results.items() if "file" in v}
             motion_analyzer = MotionAnalyzer()
@@ -313,7 +313,8 @@ class MainWindow(QMainWindow):
                 self.timeline,
                 motion_map,
                 target_duration=target_dur,
-                audio_map=audio_map
+                audio_map=audio_map,
+                transcribe_subtitles=True
             )
 
 
@@ -322,7 +323,9 @@ class MainWindow(QMainWindow):
 
             effective_dur = min(self.timeline.total_duration, target_dur) if self.timeline.total_duration > 0 else target_dur
             self.timeline_widget.set_data(self.sync_results, self.edl_segments, effective_dur)
-            self.log_info(f"Generated {len(self.edl_segments)} smooth EDL cut segments up to {effective_dur:.1f}s. Saved JSON & CSV to {config.EDL_DIR}")
+            sub_count = sum(1 for seg in self.edl_segments if seg.get("subtitle"))
+            self.log_info(f"Generated {len(self.edl_segments)} EDL cut segments with {sub_count} transcribed subtitle captions. Saved JSON & CSV to {config.EDL_DIR}")
+
 
 
         except Exception as e:
@@ -339,10 +342,12 @@ class MainWindow(QMainWindow):
         if dialog.exec():
 
             self.edl_segments = dialog.edl_segments
-            edl_path = str(config.EDL_DIR / "output.json")
-            EDLManager.save_edl(self.edl_segments, edl_path)
+            edl_json_path = str(config.DEFAULT_EDL_JSON_PATH)
+            edl_csv_path = str(config.DEFAULT_EDL_CSV_PATH)
+            EDLManager.save_edl_json(self.edl_segments, edl_json_path)
+            EDLManager.save_edl_csv(self.edl_segments, edl_csv_path)
             self.timeline_widget.set_data(self.sync_results, self.edl_segments, self.timeline.total_duration)
-            self.log_info("EDL successfully updated and approved by Human Reviewer.")
+            self.log_info("EDL successfully updated and approved by Human Reviewer. Saved output.json and output.csv.")
 
     def _on_render_video(self):
         if not self.edl_segments:

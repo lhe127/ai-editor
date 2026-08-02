@@ -10,7 +10,26 @@ BASE_DIR = Path(__file__).resolve().parent
 # Suppress non-fatal FFmpeg H.264 seek warnings in console
 os.environ["IMAGEIO_FFMPEG_LOGLEVEL"] = "error"
 os.environ["OPENCV_FFMPEG_LOGLEVEL"] = "-8"
+
+# Automatically ensure FFmpeg binary is registered on PATH for MoviePy and Whisper AI
+try:
+    import shutil
+    import imageio_ffmpeg
+    ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+    ffmpeg_dir = os.path.dirname(ffmpeg_exe)
+    target_ffmpeg = os.path.join(ffmpeg_dir, "ffmpeg.exe")
+    if not os.path.exists(target_ffmpeg) and os.path.exists(ffmpeg_exe):
+        try:
+            shutil.copyfile(ffmpeg_exe, target_ffmpeg)
+        except Exception:
+            pass
+    if ffmpeg_dir not in os.environ.get("PATH", ""):
+        os.environ["PATH"] = ffmpeg_dir + os.path.pathsep + os.environ.get("PATH", "")
+except Exception:
+    pass
+
 VIDEOS_DIR = BASE_DIR / "videos"
+
 EDL_DIR = BASE_DIR / "edl"
 OUTPUT_DIR = BASE_DIR / "output"
 ASSETS_DIR = BASE_DIR / "assets"

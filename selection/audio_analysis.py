@@ -9,8 +9,12 @@ from typing import Dict, List, Any
 
 try:
     from moviepy import VideoFileClip
-except ImportError:
-    from moviepy.editor import VideoFileClip
+except (ImportError, ModuleNotFoundError):
+    try:
+        from moviepy.editor import VideoFileClip
+    except (ImportError, ModuleNotFoundError):
+        from moviepy.video.io.VideoFileClip import VideoFileClip
+
 
 logger = logging.getLogger(__name__)
 

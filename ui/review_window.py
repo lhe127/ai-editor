@@ -48,8 +48,8 @@ class EDLReviewDialog(QDialog):
 
         # Table Widget
         self.table = QTableWidget()
-        self.table.setColumnCount(6)
-        self.table.setHorizontalHeaderLabels(["Seg #", "Start (s)", "End (s)", "Camera Angle", "Transition", "AI Decision Reason"])
+        self.table.setColumnCount(7)
+        self.table.setHorizontalHeaderLabels(["Seg #", "Start (s)", "End (s)", "Camera Angle", "Transition", "AI Decision Reason", "Subtitle Caption"])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table.itemSelectionChanged.connect(self._on_table_selection_changed)
         split_layout.addWidget(self.table, stretch=6)
@@ -72,6 +72,11 @@ class EDLReviewDialog(QDialog):
         self.btn_delete.clicked.connect(self._delete_row)
         btn_layout.addWidget(self.btn_delete)
 
+        self.btn_resync_subtitles = QPushButton("🔄 Sync AI Captions")
+        self.btn_resync_subtitles.setStyleSheet("background-color: #0284c7; font-weight: bold; color: white; padding: 5px 12px;")
+        self.btn_resync_subtitles.clicked.connect(self._re_sync_subtitles)
+        btn_layout.addWidget(self.btn_resync_subtitles)
+
         self.btn_export_csv = QPushButton("📊 Export CSV")
         self.btn_export_csv.clicked.connect(self._export_csv)
         btn_layout.addWidget(self.btn_export_csv)
@@ -92,6 +97,7 @@ class EDLReviewDialog(QDialog):
         btn_layout.addWidget(self.btn_save)
 
         layout.addLayout(btn_layout)
+
 
 
     def _populate_table(self):
@@ -129,6 +135,10 @@ class EDLReviewDialog(QDialog):
             item_reason = QTableWidgetItem(seg.get("reason", "Manual adjustment"))
             self.table.setItem(row, 5, item_reason)
 
+            # Subtitle Caption
+            item_sub = QTableWidgetItem(seg.get("subtitle", ""))
+            self.table.setItem(row, 6, item_sub)
+
     def _add_row(self):
         last_end = 0.0
         if self.edl_segments:
@@ -142,7 +152,8 @@ class EDLReviewDialog(QDialog):
             "end": "00:00:05",
             "camera": "Camera1",
             "transition": "crossfade",
-            "reason": "Human manual addition"
+            "reason": "Human manual addition",
+            "subtitle": ""
         }
         self.edl_segments.append(new_seg)
         self._populate_table()
@@ -153,18 +164,18 @@ class EDLReviewDialog(QDialog):
             self.edl_segments.pop(current_row)
             self._populate_table()
 
-    def _on_save(self):
-        updated_segments = []
+    def _re_sync_subtitles(self):
+        """Re-synchronize subtitle captions with Whisper speech recognition based on current table timecodes."""
         try:
+            current_segments = []
             for row in range(self.table.rowCount()):
-                seg_id = int(self.table.item(row, 0).text())
                 start_sec = float(self.table.item(row, 1).text())
                 end_sec = float(self.table.item(row, 2).text())
                 cam = self.table.cellWidget(row, 3).currentText()
                 trans = self.table.cellWidget(row, 4).currentText()
                 reason = self.table.item(row, 5).text()
 
-                updated_segments.append({
+                current_segments.append({
                     "segment_id": row + 1,
                     "start_sec": round(start_sec, 2),
                     "end_sec": round(end_sec, 2),
@@ -172,15 +183,81 @@ class EDLReviewDialog(QDialog):
                     "end": f"{int(end_sec)//3600:02d}:{(int(end_sec)%3600)//60:02d}:{int(end_sec)%60:02d}",
                     "camera": cam,
                     "transition": trans,
-                    "reason": reason
+                    "reason": reason,
+                    "subtitle": ""
                 })
 
+            primary_file = None
+            for seg in current_segments:
+                vpath = self._find_video_path(seg["camera"])
+                if vpath and os.path.exists(vpath):
+                    primary_file = vpath
+                    break
+
+            if not primary_file and self.camera_files:
+                for k, v in self.camera_files.items():
+                    if os.path.exists(v):
+                        primary_file = v
+                        break
+
+            from subtitle.whisper_transcriber import WhisperTranscriber
+            transcriber = WhisperTranscriber()
+            updated_segments = transcriber.transcribe_edl_segments(
+                edl_segments=current_segments,
+                video_path=primary_file
+            )
+
             self.edl_segments = updated_segments
+            self._populate_table()
+            QMessageBox.information(
+                self,
+                "Caption Sync Complete",
+                f"Successfully re-synchronized AI speech captions across {len(updated_segments)} cut segments!"
+            )
+        except Exception as e:
+            logger.error(f"Error during caption re-synchronization: {e}", exc_info=True)
+            QMessageBox.critical(self, "Sync Error", f"Failed to re-synchronize captions:\n{e}")
+
+    def _get_table_segments(self) -> List[Dict[str, Any]]:
+        """Extract current live EDL segments from the table widget UI."""
+        updated_segments = []
+        for row in range(self.table.rowCount()):
+            seg_id = int(self.table.item(row, 0).text())
+            start_sec = float(self.table.item(row, 1).text())
+            end_sec = float(self.table.item(row, 2).text())
+            cam = self.table.cellWidget(row, 3).currentText()
+            trans = self.table.cellWidget(row, 4).currentText()
+            reason = self.table.item(row, 5).text()
+            sub_item = self.table.item(row, 6)
+            subtitle = sub_item.text() if sub_item else ""
+
+            updated_segments.append({
+                "segment_id": row + 1,
+                "start_sec": round(start_sec, 2),
+                "end_sec": round(end_sec, 2),
+                "start": f"{int(start_sec)//3600:02d}:{(int(start_sec)%3600)//60:02d}:{int(start_sec)%60:02d}",
+                "end": f"{int(end_sec)//3600:02d}:{(int(end_sec)%3600)//60:02d}:{int(end_sec)%60:02d}",
+                "camera": cam,
+                "transition": trans,
+                "reason": reason,
+                "subtitle": subtitle
+            })
+        return updated_segments
+
+    def _on_save(self):
+        try:
+            self.edl_segments = self._get_table_segments()
             self.accept()
         except ValueError as e:
             QMessageBox.critical(self, "Invalid Input", f"Please enter valid numeric start/end values: {e}")
 
     def _export_csv(self):
+        try:
+            current_segments = self._get_table_segments()
+        except ValueError as e:
+            QMessageBox.critical(self, "Invalid Input", f"Please enter valid numeric start/end values before exporting: {e}")
+            return
+
         csv_path, _ = QFileDialog.getSaveFileName(
             self,
             "Export EDL to CSV",
@@ -188,7 +265,8 @@ class EDLReviewDialog(QDialog):
             "CSV Files (*.csv)"
         )
         if csv_path:
-            if EDLManager.save_edl_csv(self.edl_segments, csv_path):
+            if EDLManager.save_edl_csv(current_segments, csv_path):
+                self.edl_segments = current_segments
                 QMessageBox.information(self, "Export Successful", f"Exported EDL to CSV:\n{csv_path}")
 
     def _load_edl(self):
@@ -243,6 +321,8 @@ class EDLReviewDialog(QDialog):
             end_sec = float(self.table.item(row, 2).text())
             cam_combo = self.table.cellWidget(row, 3)
             cam_id = cam_combo.currentText() if cam_combo else "Camera1"
+            sub_item = self.table.item(row, 6)
+            subtitle_text = sub_item.text() if sub_item else ""
 
             video_path = self._find_video_path(cam_id)
 
@@ -251,11 +331,13 @@ class EDLReviewDialog(QDialog):
                     video_path=video_path,
                     start_sec=start_sec,
                     end_sec=end_sec,
-                    label=cam_id
+                    label=cam_id,
+                    subtitle=subtitle_text
                 )
             else:
                 self.preview_player.lbl_status.setText(f"❌ No video file found for {cam_id}")
         except Exception as e:
             logger.error(f"Error in preview table selection: {e}")
+
 
 

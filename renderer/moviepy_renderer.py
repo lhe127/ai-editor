@@ -7,12 +7,24 @@ import os
 import logging
 from typing import List, Dict, Any
 
+import importlib
+
 try:
     from moviepy import VideoFileClip, CompositeVideoClip, concatenate_videoclips
     import moviepy.video.fx as vfx
-except ImportError:
-    from moviepy.editor import VideoFileClip, CompositeVideoClip, concatenate_videoclips
-    import moviepy.video.fx.all as vfx
+except (ImportError, ModuleNotFoundError):
+    try:
+        _mp_editor = importlib.import_module("moviepy.editor")
+        VideoFileClip = _mp_editor.VideoFileClip
+        CompositeVideoClip = _mp_editor.CompositeVideoClip
+        concatenate_videoclips = _mp_editor.concatenate_videoclips
+        vfx = importlib.import_module("moviepy.video.fx.all")
+    except (ImportError, ModuleNotFoundError):
+        from moviepy.video.io.VideoFileClip import VideoFileClip
+        from moviepy.video.compositing.CompositeVideoClip import CompositeVideoClip
+        from moviepy.video.compositing.concatenate import concatenate_videoclips
+        import moviepy.video.fx as vfx
+
 
 import config
 from synchronization.timeline import MasterTimeline
@@ -153,12 +165,20 @@ class MoviePyRenderer:
                     duration=min(4.0, segment_duration)
                 )
 
-                composite_seg = CompositeVideoClip([sub_clip, lower_third])
+                # Attach Speech Subtitle overlay
+                subtitle_text = seg.get("subtitle", "")
+                subtitle_clip = sub_gen.create_subtitle_overlay(
+                    subtitle_text=subtitle_text,
+                    duration=segment_duration
+                )
+
+                composite_seg = CompositeVideoClip([sub_clip, lower_third, subtitle_clip])
                 composite_seg = helper_with_duration(composite_seg, segment_duration)
                 processed_items.append({
                     "clip": composite_seg,
                     "transition": transition
                 })
+
 
             # 3. Add Closing Outro Credits Card
             if include_outro:

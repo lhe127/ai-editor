@@ -43,6 +43,17 @@ class VideoPreviewWidget(QWidget):
         self.lbl_status.setStyleSheet("color: #38bdf8; font-weight: bold; font-size: 12px;")
         layout.addWidget(self.lbl_status)
 
+        # Subtitle Banner Display below preview screen
+        self.lbl_subtitle = QLabel("")
+        self.lbl_subtitle.setWordWrap(True)
+        self.lbl_subtitle.setAlignment(Qt.AlignCenter)
+        self.lbl_subtitle.setStyleSheet(
+            "color: #ffffff; background-color: #0f172a; border-left: 3px solid #f59e0b; "
+            "padding: 6px; font-weight: bold; font-size: 12px; border-radius: 4px;"
+        )
+        self.lbl_subtitle.hide()
+        layout.addWidget(self.lbl_subtitle)
+
         # Controls Layout (Play/Pause, Slider, Timecode)
         ctrl_layout = QHBoxLayout()
 
@@ -103,8 +114,8 @@ class VideoPreviewWidget(QWidget):
         self.player.setSource(QUrl.fromLocalFile(video_path))
         self.lbl_status.setText(f"📹 Preview: {os.path.basename(video_path)}")
 
-    def play_segment(self, video_path: str, start_sec: float, end_sec: float, label: str = ""):
-        """Seek to start_sec and play segment up to end_sec."""
+    def play_segment(self, video_path: str, start_sec: float, end_sec: float, label: str = "", subtitle: str = ""):
+        """Seek to start_sec and play segment up to end_sec with optional subtitle caption."""
         if not os.path.exists(video_path):
             self.lbl_status.setText(f"❌ File missing: {os.path.basename(video_path)}")
             return
@@ -119,6 +130,12 @@ class VideoPreviewWidget(QWidget):
             status_text += f" ({label})"
         self.lbl_status.setText(status_text)
 
+        if subtitle and subtitle.strip():
+            self.lbl_subtitle.setText(f"💬 Subtitle: {subtitle.strip()}")
+            self.lbl_subtitle.show()
+        else:
+            self.lbl_subtitle.hide()
+
         if self.current_video_path != video_path:
             self.current_video_path = video_path
             self._pending_seek_ms = start_ms
@@ -129,6 +146,7 @@ class VideoPreviewWidget(QWidget):
             self.btn_play.setText("⏸️ Pause")
 
         self._ignore_position_events = False
+
 
     def _toggle_play(self):
         if self.player.playbackState() == QMediaPlayer.PlayingState:
