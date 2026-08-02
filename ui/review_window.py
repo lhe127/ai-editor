@@ -218,39 +218,46 @@ class EDLReviewDialog(QDialog):
             logger.error(f"Error during caption re-synchronization: {e}", exc_info=True)
             QMessageBox.critical(self, "Sync Error", f"Failed to re-synchronize captions:\n{e}")
 
-    def _on_save(self):
-
+    def _get_table_segments(self) -> List[Dict[str, Any]]:
+        """Extract current live EDL segments from the table widget UI."""
         updated_segments = []
+        for row in range(self.table.rowCount()):
+            seg_id = int(self.table.item(row, 0).text())
+            start_sec = float(self.table.item(row, 1).text())
+            end_sec = float(self.table.item(row, 2).text())
+            cam = self.table.cellWidget(row, 3).currentText()
+            trans = self.table.cellWidget(row, 4).currentText()
+            reason = self.table.item(row, 5).text()
+            sub_item = self.table.item(row, 6)
+            subtitle = sub_item.text() if sub_item else ""
+
+            updated_segments.append({
+                "segment_id": row + 1,
+                "start_sec": round(start_sec, 2),
+                "end_sec": round(end_sec, 2),
+                "start": f"{int(start_sec)//3600:02d}:{(int(start_sec)%3600)//60:02d}:{int(start_sec)%60:02d}",
+                "end": f"{int(end_sec)//3600:02d}:{(int(end_sec)%3600)//60:02d}:{int(end_sec)%60:02d}",
+                "camera": cam,
+                "transition": trans,
+                "reason": reason,
+                "subtitle": subtitle
+            })
+        return updated_segments
+
+    def _on_save(self):
         try:
-            for row in range(self.table.rowCount()):
-                seg_id = int(self.table.item(row, 0).text())
-                start_sec = float(self.table.item(row, 1).text())
-                end_sec = float(self.table.item(row, 2).text())
-                cam = self.table.cellWidget(row, 3).currentText()
-                trans = self.table.cellWidget(row, 4).currentText()
-                reason = self.table.item(row, 5).text()
-                sub_item = self.table.item(row, 6)
-                subtitle = sub_item.text() if sub_item else ""
-
-                updated_segments.append({
-                    "segment_id": row + 1,
-                    "start_sec": round(start_sec, 2),
-                    "end_sec": round(end_sec, 2),
-                    "start": f"{int(start_sec)//3600:02d}:{(int(start_sec)%3600)//60:02d}:{int(start_sec)%60:02d}",
-                    "end": f"{int(end_sec)//3600:02d}:{(int(end_sec)%3600)//60:02d}:{int(end_sec)%60:02d}",
-                    "camera": cam,
-                    "transition": trans,
-                    "reason": reason,
-                    "subtitle": subtitle
-                })
-
-
-            self.edl_segments = updated_segments
+            self.edl_segments = self._get_table_segments()
             self.accept()
         except ValueError as e:
             QMessageBox.critical(self, "Invalid Input", f"Please enter valid numeric start/end values: {e}")
 
     def _export_csv(self):
+        try:
+            current_segments = self._get_table_segments()
+        except ValueError as e:
+            QMessageBox.critical(self, "Invalid Input", f"Please enter valid numeric start/end values before exporting: {e}")
+            return
+
         csv_path, _ = QFileDialog.getSaveFileName(
             self,
             "Export EDL to CSV",
@@ -258,7 +265,8 @@ class EDLReviewDialog(QDialog):
             "CSV Files (*.csv)"
         )
         if csv_path:
-            if EDLManager.save_edl_csv(self.edl_segments, csv_path):
+            if EDLManager.save_edl_csv(current_segments, csv_path):
+                self.edl_segments = current_segments
                 QMessageBox.information(self, "Export Successful", f"Exported EDL to CSV:\n{csv_path}")
 
     def _load_edl(self):

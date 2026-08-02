@@ -342,10 +342,12 @@ class MainWindow(QMainWindow):
         if dialog.exec():
 
             self.edl_segments = dialog.edl_segments
-            edl_path = str(config.EDL_DIR / "output.json")
-            EDLManager.save_edl(self.edl_segments, edl_path)
+            edl_json_path = str(config.DEFAULT_EDL_JSON_PATH)
+            edl_csv_path = str(config.DEFAULT_EDL_CSV_PATH)
+            EDLManager.save_edl_json(self.edl_segments, edl_json_path)
+            EDLManager.save_edl_csv(self.edl_segments, edl_csv_path)
             self.timeline_widget.set_data(self.sync_results, self.edl_segments, self.timeline.total_duration)
-            self.log_info("EDL successfully updated and approved by Human Reviewer.")
+            self.log_info("EDL successfully updated and approved by Human Reviewer. Saved output.json and output.csv.")
 
     def _on_render_video(self):
         if not self.edl_segments:
