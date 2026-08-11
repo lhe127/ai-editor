@@ -19,8 +19,10 @@ class WhisperTranscriber:
         if self.model is None:
             try:
                 import whisper
-                logger.info(f"Loading OpenAI Whisper AI model '{self.model_name}'...")
-                self.model = whisper.load_model(self.model_name)
+                import torch
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+                logger.info(f"Loading OpenAI Whisper AI model '{self.model_name}' on device '{device}'...")
+                self.model = whisper.load_model(self.model_name, device=device)
             except Exception as e:
                 logger.warning(f"Failed to load OpenAI Whisper AI model ({e}). Falling back to rule-based captions.")
                 self.model = False
@@ -77,6 +79,10 @@ class WhisperTranscriber:
             kwargs = {"task": "transcribe"}
             if language:
                 kwargs["language"] = language
+
+            import torch
+            if not torch.cuda.is_available():
+                kwargs["fp16"] = False
 
             result = self.model.transcribe(video_path, **kwargs)
             segments = []

@@ -71,6 +71,9 @@ MIN_SHOT_DURATION = 4.0  # seconds to prevent rapid camera flickering
 MAX_SHOT_DURATION = 12.0 # seconds before forcing angle change
 MOTION_SAMPLE_INTERVAL = 0.5 # seconds between motion checks
 
+# Speech AI Subtitle Parameters
+WHISPER_MODEL = "large" # Options: "tiny", "base", "small", "medium", "large", "large-v3"
+
 # Project Metadata
 PROJECT_TITLE = "Kindergarten Graduation Ceremony 2026"
 SCHOOL_NAME = "Sunshine Little Angels Kindergarten"

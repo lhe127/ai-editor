@@ -1,5 +1,5 @@
 ﻿segment_id,start,end,start_sec,end_sec,camera,transition,reason,subtitle
-1,00:00:00,00:00:58,0.0,58.0,Camera1,fade,Opening stage shot,"小小的生息有著大他的感恩之心感恩開始的這件意,也感恩加上我們頭路的野出"
-2,00:00:58,00:01:40,58.0,100.0,Camera2,fade,[Graduation Performance] Returning to stage performance (Stage Front (Wide)),"十五百開金十月,暴長新鑲喜代令"
-3,00:01:40,00:02:03,100.0,123.0,Camera3,crossfade,[Certificate Presentation] Switching to active stage angle: Stage Center (Close-up),请大家以热烈的掌声欢迎毕业班小朋友上台精彩演出！
-4,00:02:03,00:03:00,123.0,180.0,Camera4,crossfade,[Closing Ceremony] Returning to stage performance (Stage Center (Close-up)),让我们再次为全体毕业生与付出辛劳的老师们热烈鼓掌！
+1,0:00:00,0:00:58,0,58,Camera1,fade,Opening stage shot,"小小的身体有著大大的感恩之心 ， 感恩孩子们的演绎,也感恩家长们投入的演出 ， 慈母怀胎今十月,饱尝心酸喜败泪 ，这是父母恩重的怀胎子母功德 ， 今天我们有幸邀请到一位毕业生同学的妈妈亲临分享她的怀胎心得， 而邀请妈妈上台分享之前 ， 先让大家观赏一段怀胎回顾影片"
+2,0:00:58,0:01:40,58,100,Camera2,fade,[Graduation Performance] Returning to stage performance (Stage Front (Wide)),肃静， 请肃静 ， 大众请合掌 ， 向诸佛菩萨行三问讯礼， 一问讯 请起，再问讯 请起 ， 三问讯 请起
+3,0:01:40,0:02:03,100,123,Camera3,crossfade,[Certificate Presentation] Switching to active stage angle: Stage Center (Close-up),
+4,0:02:03,0:03:00,123,180,Camera4,crossfade,[Closing Ceremony] Returning to stage performance (Stage Center (Close-up)),感谢全体毕业生与老师们， 为他们的精彩的演绎热烈鼓掌！
